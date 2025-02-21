@@ -138,7 +138,7 @@ data_background <-
     data_nsip,
     data_cop
   ) %>% 
-  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  slice_sample(n = nrow(.), replace = FALSE) %>% 
   # 施設を追加してまたシャッフル
   mutate(
     facility = c(rep("大学病院" , 200),
@@ -147,7 +147,7 @@ data_background <-
                  rep("市立病院X",  30),
                  rep("市立病院Y",  20))
   ) %>% 
-  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  slice_sample(n = nrow(.), replace = FALSE) %>% 
   # 性別、年齢を追加してまたシャッフル
   mutate(
     # no（疾患ごとの症例番号）がランダム抽出した中にあれば男性、なければ女性
@@ -167,7 +167,7 @@ data_background <-
     )
   ) %>%
   ungroup() %>% 
-  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  slice_sample(n = nrow(.), replace = FALSE) %>% 
   # IPF男性、IPF以外男性、女性の3つに分けて喫煙歴をつける
   mutate(
     sm_group = case_when(dx == "IPF" & sex == "男" ~ "a",
@@ -186,7 +186,7 @@ data_background <-
   ) %>% 
   # 喫煙歴の作業用変数を削除してシャッフル
   select(-sm_group, -sm_id) %>% 
-  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  slice_sample(n = nrow(.), replace = FALSE) %>% 
   # 合併症は有病率を決めてランダム生成
   mutate(
     com_diabetes     = if_else(runif(400, 0, 1) < 0.4, "あり", "なし"),
@@ -194,7 +194,7 @@ data_background <-
     com_hypertention = if_else(runif(400, 0, 1) < 0.6, "あり", "なし"),
   ) %>% 
   # 再度シャッフル後、この時点での順番を登録順として不要な変数を整理
-  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  slice_sample(n = nrow(.), replace = FALSE) %>% 
   mutate(index = row_number()) %>% 
   select(
     index, facility, dx, age, sex, time, died, smoking,
