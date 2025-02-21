@@ -193,34 +193,9 @@ data_background <-
     com_arrythmia    = if_else(runif(400, 0, 1) < 0.3, "あり", "なし"),
     com_hypertention = if_else(runif(400, 0, 1) < 0.6, "あり", "なし"),
   ) %>% 
-  # 再度シャッフル後、この時点での順番を登録順として不要な変数を整理
-  slice_sample(n = nrow(.), replace = FALSE) %>% 
-  mutate(index = row_number()) %>% 
+  # 不要な変数を整理
   select(
-    index, facility, age, sex, dx, time, died, smoking,
+    no, facility, age, sex, dx, time, died, smoking,
     com_diabetes, com_arrythmia, com_hypertention
-  ) %>% 
-  # 患者IDを追加（あえて不揃いにする）
-  #   大学病院と市立病院Xは施設内通し番号
-  #   総合病院A, B は整数6桁
-  #   市立病院Y は整数4桁
-  group_nest(facility) %>% 
-  mutate(
-    data2 = map2(
-      facility, data,
-      function(f, d) {
-        mutate(d,
-               Pt_ID = case_when(
-                 f == "大学病院"  ~ 1:nrow(d),
-                 f == "総合病院A" ~ sample(1:500000, nrow(d), replace = F),
-                 f == "総合病院B" ~ sample(1:300000, nrow(d), replace = F),
-                 f == "市立病院X" ~ 1:nrow(d),
-                 f == "市立病院Y" ~ sample(1:8000  , nrow(d), replace = F))
-        )
-      })
-  ) %>% 
-  select(-data) %>% 
-  unnest(cols = data2) %>% 
-  # 並べ直し
-  relocate(index, facility, Pt_ID, .before = everything()) %>% 
-  arrange(index)
+  )
+
