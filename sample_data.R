@@ -124,3 +124,79 @@ data_ipf %>%
 
 # step 2: 背景因子 ----------------------------------------------------------------
 
+# 施設は "大学病院", "総合病院A", "総合病院B", "市立病院X", "市立病院Y"
+# 症例数はそれぞれ 200, 80, 70, 30, 20
+# 男女比は IPFで 3:2、NSIPで 2:3、COPは 1:1 とする
+# 年齢 mean(SD) は、IPF 70(7)、60(7)、60(10) とする
+# 喫煙歴ありは IPFの男性で 80%、その他の男性は 40%、女性 30% とする
+# 基礎疾患は「高血圧」「糖尿病」「不整脈」をそれぞれランダムで付加
+
+data_background <-
+  # 3つの群を結合しシャッフル
+  data_ipf %>% 
+  rbind(
+    data_nsip,
+    data_cop
+  ) %>% 
+  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  # 施設を追加してまたシャッフル
+  mutate(
+    facility = c(rep("大学病院" , 200),
+                 rep("総合病院A",  80),
+                 rep("総合病院B",  70),
+                 rep("市立病院X",  30),
+                 rep("市立病院Y",  20))
+  ) %>% 
+  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  # 性別、年齢を追加してまたシャッフル
+  mutate(
+    # no（疾患ごとの症例番号）がランダム抽出した中にあれば男性、なければ女性
+    sex = case_when(
+      dx == "IPF"  ~ if_else(no %in% sample(1:250, 150, replace = F), "男", "女"),
+      dx == "NSIP" ~ if_else(no %in% sample(1:100,  40, replace = F), "男", "女"),
+      dx == "COP"  ~ if_else(no %in% sample(1:50 ,  25, replace = F), "男", "女"),
+    )
+  ) %>% 
+  # 年齢は1行ずつ処理して生成
+  rowwise() %>% 
+  mutate(
+    age = case_when(
+      dx == "IPF"  ~ rnorm(1, mean = 70, sd = 5),
+      dx == "NSIP" ~ rnorm(1, mean = 60, sd = 7),
+      dx == "COP"  ~ rnorm(1, mean = 60, sd = 10)
+    )
+  ) %>%
+  ungroup() %>% 
+  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  # IPF男性、IPF以外男性、女性の3つに分けて喫煙歴をつける
+  mutate(
+    sm_group = case_when(dx == "IPF" & sex == "男" ~ "a",
+                         sex == "男"               ~ "b",
+                         sex == "女"               ~ "c")
+  ) %>% 
+  group_by(sm_group) %>% 
+  mutate(sm_id = row_number()) %>% 
+  ungroup() %>% 
+  mutate(
+    smoking = case_when(
+      sm_group == "a" ~ if_else(sm_id %in% sample(150, 105, F), "あり", "なし"),
+      sm_group == "b" ~ if_else(sm_id %in% sample( 65,  25, F), "あり", "なし"),
+      sm_group == "c" ~ if_else(sm_id %in% sample(185,  55, F), "あり", "なし")
+    )
+  ) %>% 
+  # 喫煙歴の作業用変数を削除してシャッフル
+  select(-sm_group, -sm_id) %>% 
+  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  # 合併症は有病率を決めてランダム生成
+  mutate(
+    com_diabetes     = if_else(runif(400, 0, 1) < 0.4, "あり", "なし"),
+    com_arrythmia    = if_else(runif(400, 0, 1) < 0.3, "あり", "なし"),
+    com_hypertention = if_else(runif(400, 0, 1) < 0.6, "あり", "なし"),
+  ) %>% 
+  # 再度シャッフル後、この時点での順番を登録順として不要な変数を整理
+  slice_sample(n = nrow(.), replace = TRUE) %>% 
+  mutate(index = row_number()) %>% 
+  select(
+    index, facility, dx, age, sex, time, died, smoking,
+    com_diabetes, com_arrythmia, com_hypertention
+  )
