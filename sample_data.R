@@ -199,3 +199,54 @@ data_background <-
     com_diabetes, com_arrythmia, com_hypertention
   )
 
+# step 3: 登録順 ------------------------------------------------------------------
+
+# 研究期間は、2013-10-01 から 2024-03-31 の10年半とする
+# 登録日は、2013-10-01 から　2024-03-31 - time (mo.) の間でランダムに決定
+# それを起点に打ち切り日（と生年月日）を決める
+
+data_indexed <-
+  data_background %>% 
+  # 登録日を計算
+  rowwise() %>% 
+  mutate(
+    date_limit   = ymd("2024-03-31") - time * 365.25 / 12,
+    date_enroll  = runif(1, ymd("2013-10-01"), date_limit) %>% as_date(),
+    date_outcome = date_enroll + time * 365.25 / 12,
+    date_birth   = date_enroll - age * 365.25
+  ) %>% 
+  ungroup() %>% 
+  # 年齢は整数にする
+  mutate(age = floor(age) %>% as.integer()) %>% 
+  # 登録日順に並べ替えて全体の症例登録番号を振る
+  arrange(date_enroll) %>% 
+  mutate(index = row_number(), .before = everything()) %>% 
+  # 患者IDを追加（あえて形式を不揃いにする）
+  #   大学病院と市立病院Xは施設内通し番号
+  #   総合病院A, B は整数6桁
+  #   市立病院Y は整数4桁
+  group_nest(facility) %>% 
+  mutate(
+    data2 = map2(
+      facility, data,
+      function(f, d) {
+        mutate(d,
+               Pt_ID = case_when(
+                 f == "大学病院"  ~ 1:nrow(d),
+                 f == "総合病院A" ~ sample(1:500000, nrow(d), replace = F),
+                 f == "総合病院B" ~ sample(1:300000, nrow(d), replace = F),
+                 f == "市立病院X" ~ 1:nrow(d),
+                 f == "市立病院Y" ~ sample(1:8000  , nrow(d), replace = F))
+        )
+      })
+  ) %>% 
+  select(-data) %>% 
+  unnest(cols = data2) %>% 
+  # 並べ直し
+  select(
+    index, facility, Pt_ID, date_enroll, sex, age, date_birth,
+    dx, date_outcome, time, died,
+    com_diabetes, com_arrythmia, com_hypertention
+  ) %>% 
+  arrange(index)
+
