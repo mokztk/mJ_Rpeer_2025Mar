@@ -214,8 +214,11 @@ data_indexed <-
     date_birth   = date_enroll - age * 365.25
   ) %>% 
   ungroup() %>% 
-  # 年齢は整数にする
-  mutate(age = floor(age) %>% as.integer()) %>% 
+  # 年齢は整数、観察期間は小数点以下1桁にする
+  mutate(
+    age  = floor(age) %>% as.integer(),
+    time = round(time, 1)
+  ) %>% 
   # 登録日順に並べ替えて全体の症例登録番号を振る
   arrange(date_enroll) %>% 
   mutate(index = row_number(), .before = everything()) %>% 
