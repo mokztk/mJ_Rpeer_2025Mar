@@ -411,4 +411,12 @@ data_followup <-
   relocate(ends_with("_3y"), .after = everything()) %>% 
   relocate(ends_with("_5y"), .after = everything()) 
 
-
+# test
+data_followup %>% 
+  mutate(delta_FVC_1y = FVC_1y - FVC_0y) %>% 
+  coxph(Surv(time, died) ~ dx + sex + age + delta_FVC_1y,
+        data = .) %>%
+  gtsummary::tbl_regression(
+    exponentiate = TRUE,
+    conf.level   = 0.95
+  )
