@@ -253,12 +253,40 @@ data_indexed <-
 # 結果再現のために乱数シードを固定
 set.seed(12345)
 
-# KL-6は対数正規分布とする
+# KL-6 は対数正規分布とする
 # 　登録時（0y) で 平均を IPF 1000, NSIP 800, COP 1200 で求める
 #   1年後 (1y) 、3年後 (3y)、5年後 (5y) は登録時に適当な係数＋ノイズを掛けていく
+# FVCとFEV1.0 は相関係数 0.7 の2次元正規分布とする
+#   登録時 (0y) 平均を IPF FVC 2.5, FEV1.0 2.0、NSIPとCOPは FVC 3.0, FEV1.0 2.5 とする
+#   FVCとFEV1.0が逆転した場合は入れ替える
+#   1年後 (1y) 、3年後 (3y)、5年後 (5y) は登録時から適当な値＋ノイズを引いていく
+
+# 呼吸機能検査の値を先に作ってストックしておく
+sigma <- matrix(c(0.5^2, 0.7 * 0.5 * 0.4, 0.7 * 0.5 * 0.4, 0.4^2), 2, 2)
+
+fvc_stock_ipf <- 
+  MASS::mvrnorm(n = 250, mu = c(2.5, 2.0), Sigma = sigma) %>% 
+  as_tibble(.name_repair = "unique") %>% 
+  rename_with(~ c("a", "b")) %>% 
+  mutate(
+    FVC_0y    = if_else(a < b, b, a),
+    FEV1.0_0y = if_else(a < b, a, b)
+  ) %>% 
+  select(FVC_0y, FEV1.0_0y)
+
+fvc_stock_nonipf <- 
+  MASS::mvrnorm(n = 150, mu = c(3.0, 2.5), Sigma = sigma) %>% 
+  as_tibble(.name_repair = "unique") %>% 
+  rename_with(~ c("a", "b")) %>% 
+  mutate(
+    FVC_0y    = if_else(a < b, b, a),
+    FEV1.0_0y = if_else(a < b, a, b)
+  ) %>% 
+  select(FVC_0y, FEV1.0_0y)
 
 
 data_indexed %>% 
+  # KL-6
   rowwise() %>% 
   mutate(
     KL6_0y = case_when(dx == "IPF"  ~ rlnorm(1, meanlog = log(1000), sd = 0.3),
@@ -273,7 +301,7 @@ data_indexed %>%
     KL6_5y = case_when(dx == "COP" & died == 0 ~ KL6_3y * rnorm(1, 1.0, 0.1),
                        died == 0               ~ KL6_3y * rnorm(1, 0.9, 0.3),
                        died == 1               ~ KL6_3y * rnorm(1, 1.2, 0.2)),
-    # KL-6は小数点以下を丸める
+    # 小数点以下を丸める
     across(starts_with("KL6_"), round),
     # 観察期間がそれぞれの時点に満たないものは除外
     KL6_1y = if_else(time < 12 * 1, NA_real_, KL6_1y),
@@ -281,13 +309,71 @@ data_indexed %>%
     KL6_5y = if_else(time < 12 * 5, NA_real_, KL6_5y)
   ) %>% 
   ungroup() %>% 
-  select(index, dx, starts_with("KL6_")) %>%
+  # 呼吸機能
+  # 0y はあらかじめ作っておいた呼吸機能検査を結合する
+  group_nest(dx == "IPF") %>% 
+  rename_with(~ c("ipf", "data")) %>% 
+  mutate(
+    fvc   = map(ipf, \(x) if (x) fvc_stock_ipf else fvc_stock_nonipf),
+    data2 = map2(data, fvc, \(d, f) bind_cols(d, f))
+  ) %>% 
+  select(data2) %>% 
+  unnest(cols = "data2") %>% 
+  arrange(index) %>% 
+  # 1y, 3y, 5y は順にある程度の値を引いていく
+  rowwise() %>% 
+  mutate(
+    FVC_1y    = case_when(dx == "IPF" & died == 1 ~ FVC_0y    - rnorm(1, 0.40, 0.2),
+                          dx == "IPF" & died == 0 ~ FVC_0y    - rnorm(1, 0.20, 0.1),
+                          died == 1               ~ FVC_0y    - rnorm(1, 0.25, 0.2),
+                          died == 0               ~ FVC_0y    - rnorm(1, 0.10, 0.1)),
+    FEV1.0_1y = case_when(dx == "IPF" & died == 1 ~ FEV1.0_0y - rnorm(1, 0.40, 0.2),
+                          dx == "IPF" & died == 0 ~ FEV1.0_0y - rnorm(1, 0.20, 0.1),
+                          died == 1               ~ FEV1.0_0y - rnorm(1, 0.25, 0.2),
+                          died == 0               ~ FEV1.0_0y - rnorm(1, 0.10, 0.1)),
+    FEV1.0_1y = if_else(FEV1.0_1y > FVC_1y, FVC_1y - 0.1, FEV1.0_1y),
+    FVC_3y    = case_when(dx == "IPF" & died == 1 ~ FVC_1y    - rnorm(1, 0.60, 0.4),
+                          dx == "IPF" & died == 0 ~ FVC_1y    - rnorm(1, 0.30, 0.3),
+                          died == 1               ~ FVC_1y    - rnorm(1, 0.40, 0.3),
+                          died == 0               ~ FVC_1y    - rnorm(1, 0.20, 0.2)),
+    FEV1.0_3y = case_when(dx == "IPF" & died == 1 ~ FEV1.0_1y - rnorm(1, 0.50, 0.4),
+                          dx == "IPF" & died == 0 ~ FEV1.0_1y - rnorm(1, 0.30, 0.3),
+                          died == 1               ~ FEV1.0_1y - rnorm(1, 0.40, 0.3),
+                          died == 0               ~ FEV1.0_1y - rnorm(1, 0.20, 0.2)),
+    FEV1.0_3y = if_else(FEV1.0_3y > FVC_3y, FVC_3y - 0.1, FEV1.0_3y),
+    FVC_5y    = case_when(dx == "IPF" & died == 1 ~ FVC_3y    - rnorm(1, 1.00, 0.3),
+                          dx == "IPF" & died == 0 ~ FVC_3y    - rnorm(1, 0.30, 0.2),
+                          died == 1               ~ FVC_3y    - rnorm(1, 0.40, 0.2),
+                          died == 0               ~ FVC_3y    - rnorm(1, 0.20, 0.1)),
+    FEV1.0_5y = case_when(dx == "IPF" & died == 1 ~ FEV1.0_3y - rnorm(1, 0.50, 0.3),
+                          dx == "IPF" & died == 0 ~ FEV1.0_3y - rnorm(1, 0.30, 0.2),
+                          died == 1               ~ FEV1.0_3y - rnorm(1, 0.40, 0.2),
+                          died == 0               ~ FEV1.0_3y - rnorm(1, 0.20, 0.1)),
+    FEV1.0_5y = if_else(FEV1.0_5y > FVC_5y, FVC_5y - 0.1, FEV1.0_5y),
+    # 呼吸機能は小数点以下2桁で丸める
+    across(starts_with("FVC_")   , round, 2),
+    across(starts_with("FEV1.0_"), round, 2),
+    # 観察期間がそれぞれの時点に満たないものは除外
+    FVC_1y    = if_else(time < 12 * 1, NA_real_, FVC_1y),
+    FVC_3y    = if_else(time < 12 * 3, NA_real_, FVC_3y),
+    FVC_5y    = if_else(time < 12 * 5, NA_real_, FVC_5y),
+    FEV1.0_1y = if_else(time < 12 * 1, NA_real_, FEV1.0_1y),
+    FEV1.0_3y = if_else(time < 12 * 3, NA_real_, FEV1.0_3y),
+    FEV1.0_5y = if_else(time < 12 * 5, NA_real_, FEV1.0_5y),
+    # 低下しすぎた場合は欠測
+    across(starts_with("FVC_")   , \(x) if_else(x < 1.0, NA_real_, x)),
+    across(starts_with("FEV1.0_"), \(x) if_else(x < 0.7, NA_real_, x)),
+  ) %>% 
+  ungroup() %>%
+  View()
+  
+  select(index, dx, starts_with("FEV1.0_")) %>%
   pivot_longer(
-    cols = starts_with("KL6_"),
+    cols = starts_with("FEV1.0_"),
     names_to = "period",
-    names_prefix = "KL6_",
-    values_to = "KL6"
+    names_prefix = "FEV1_",
+    values_to = "FEV1"
   ) %>%
-  ggplot(aes(x = period, y = KL6, group = index)) +
+  ggplot(aes(x = period, y = FEV1, group = index)) +
     geom_line(alpha = .2) +
     facet_wrap(~dx, nrow = 2)
