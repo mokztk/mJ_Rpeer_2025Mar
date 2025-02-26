@@ -260,6 +260,9 @@ set.seed(12345)
 #   登録時 (0y) 平均を IPF FVC 2.5, FEV1.0 2.0、NSIPとCOPは FVC 3.0, FEV1.0 2.5 とする
 #   FVCとFEV1.0が逆転した場合は入れ替える
 #   1年後 (1y) 、3年後 (3y)、5年後 (5y) は登録時から適当な値＋ノイズを引いていく
+# DLco は %DLco として、Beta(5, 3) の形状で 100% までのレンジに拡大する
+#   登録時 (0y) に IPFは 50 - 95%、他は 70 - 110% とする
+#   1年後 (1y) 、3年後 (3y)、5年後 (5y) は登録時に適当な係数＋ノイズを掛けていく
 
 # 呼吸機能検査の値を先に作ってストックしておく
 sigma <- matrix(c(0.5^2, 0.7 * 0.5 * 0.4, 0.7 * 0.5 * 0.4, 0.4^2), 2, 2)
@@ -269,23 +272,25 @@ fvc_stock_ipf <-
   as_tibble(.name_repair = "unique") %>% 
   rename_with(~ c("a", "b")) %>% 
   mutate(
-    FVC_0y    = if_else(a < b, b, a),
-    FEV1.0_0y = if_else(a < b, a, b)
+    FVC_0y      = if_else(a < b, b, a),
+    FEV1.0_0y   = if_else(a < b, a, b),
+    pct_DLco_0y = 50 + 45 * rbeta(250, 5, 3)
   ) %>% 
-  select(FVC_0y, FEV1.0_0y)
+  select(FVC_0y, FEV1.0_0y, pct_DLco_0y)
 
 fvc_stock_nonipf <- 
   MASS::mvrnorm(n = 150, mu = c(3.0, 2.5), Sigma = sigma) %>% 
   as_tibble(.name_repair = "unique") %>% 
   rename_with(~ c("a", "b")) %>% 
   mutate(
-    FVC_0y    = if_else(a < b, b, a),
-    FEV1.0_0y = if_else(a < b, a, b)
+    FVC_0y      = if_else(a < b, b, a),
+    FEV1.0_0y   = if_else(a < b, a, b),
+    pct_DLco_0y = 70 + 40 * rbeta(150, 5, 3)
   ) %>% 
-  select(FVC_0y, FEV1.0_0y)
+  select(FVC_0y, FEV1.0_0y, pct_DLco_0y)
 
-
-data_indexed %>% 
+data_followup <-
+  data_indexed %>% 
   # KL-6
   rowwise() %>% 
   mutate(
@@ -320,9 +325,10 @@ data_indexed %>%
   select(data2) %>% 
   unnest(cols = "data2") %>% 
   arrange(index) %>% 
-  # 1y, 3y, 5y は順にある程度の値を引いていく
+  # 経過データ
   rowwise() %>% 
   mutate(
+    # FVC, FEV1.0 の 1y, 3y, 5y は順にある程度の値を引いていく
     FVC_1y    = case_when(dx == "IPF" & died == 1 ~ FVC_0y    - rnorm(1, 0.40, 0.2),
                           dx == "IPF" & died == 0 ~ FVC_0y    - rnorm(1, 0.20, 0.1),
                           died == 1               ~ FVC_0y    - rnorm(1, 0.25, 0.2),
@@ -350,30 +356,56 @@ data_indexed %>%
                           died == 1               ~ FEV1.0_3y - rnorm(1, 0.40, 0.2),
                           died == 0               ~ FEV1.0_3y - rnorm(1, 0.20, 0.1)),
     FEV1.0_5y = if_else(FEV1.0_5y > FVC_5y, FVC_5y - 0.1, FEV1.0_5y),
+    # %DLco の 1y, 3y, 5y は順にある程度の係数を掛けていく
+    pct_DLco_1y = case_when(dx == "IPF" & died == 1 ~ pct_DLco_0y * rnorm(1, 0.8, 0.1),
+                            dx == "IPF" & died == 0 ~ pct_DLco_0y * rnorm(1, 0.9, 0.1),
+                            died == 1               ~ pct_DLco_0y * rnorm(1, 0.9, 0.05),
+                            died == 0               ~ pct_DLco_0y * rnorm(1, 1.0, 0.05)),
+    pct_DLco_3y = case_when(dx == "IPF" & died == 1 ~ pct_DLco_1y * rnorm(1, 0.8, 0.2),
+                            dx == "IPF" & died == 0 ~ pct_DLco_1y * rnorm(1, 0.8, 0.1),
+                            died == 1               ~ pct_DLco_1y * rnorm(1, 0.8, 0.1),
+                            died == 0               ~ pct_DLco_1y * rnorm(1, 0.9, 0.05)),
+    pct_DLco_5y = case_when(dx == "IPF" & died == 1 ~ pct_DLco_3y * rnorm(1, 0.7, 0.1),
+                            dx == "IPF" & died == 0 ~ pct_DLco_3y * rnorm(1, 0.8, 0.1),
+                            died == 1               ~ pct_DLco_3y * rnorm(1, 0.8, 0.1),
+                            died == 0               ~ pct_DLco_3y * rnorm(1, 0.9, 0.05)),
     # 呼吸機能は小数点以下2桁で丸める
     across(starts_with("FVC_")   , round, 2),
     across(starts_with("FEV1.0_"), round, 2),
+    # %DLco は小数点以下1桁に丸める
+    across(starts_with("pct_DLco_"), round, 1),
     # 観察期間がそれぞれの時点に満たないものは除外
-    FVC_1y    = if_else(time < 12 * 1, NA_real_, FVC_1y),
-    FVC_3y    = if_else(time < 12 * 3, NA_real_, FVC_3y),
-    FVC_5y    = if_else(time < 12 * 5, NA_real_, FVC_5y),
-    FEV1.0_1y = if_else(time < 12 * 1, NA_real_, FEV1.0_1y),
-    FEV1.0_3y = if_else(time < 12 * 3, NA_real_, FEV1.0_3y),
-    FEV1.0_5y = if_else(time < 12 * 5, NA_real_, FEV1.0_5y),
+    FVC_1y      = if_else(time < 12 * 1, NA_real_, FVC_1y),
+    FVC_3y      = if_else(time < 12 * 3, NA_real_, FVC_3y),
+    FVC_5y      = if_else(time < 12 * 5, NA_real_, FVC_5y),
+    FEV1.0_1y   = if_else(time < 12 * 1, NA_real_, FEV1.0_1y),
+    FEV1.0_3y   = if_else(time < 12 * 3, NA_real_, FEV1.0_3y),
+    FEV1.0_5y   = if_else(time < 12 * 5, NA_real_, FEV1.0_5y),
+    pct_DLco_1y = if_else(time < 12 * 1, NA_real_, pct_DLco_1y),
+    pct_DLco_3y = if_else(time < 12 * 3, NA_real_, pct_DLco_3y),
+    pct_DLco_5y = if_else(time < 12 * 5, NA_real_, pct_DLco_5y),
     # 低下しすぎた場合は欠測
-    across(starts_with("FVC_")   , \(x) if_else(x < 1.0, NA_real_, x)),
-    across(starts_with("FEV1.0_"), \(x) if_else(x < 0.7, NA_real_, x)),
+    across(starts_with("FVC_")   , \(x) if_else(x < 0.7, NA_real_, x)),
+    across(starts_with("FEV1.0_"), \(x) if_else(x < 0.4, NA_real_, x)),
+    # FVC欠測の場合は、FEV1, DLcoとも欠測
+    FEV1.0_0y   = if_else(is.na(FVC_0y), NA_real_, FEV1.0_0y),
+    FEV1.0_1y   = if_else(is.na(FVC_1y), NA_real_, FEV1.0_1y),
+    FEV1.0_3y   = if_else(is.na(FVC_3y), NA_real_, FEV1.0_3y),
+    FEV1.0_5y   = if_else(is.na(FVC_5y), NA_real_, FEV1.0_5y),
+    pct_DLco_0y = if_else(is.na(FVC_0y), NA_real_, pct_DLco_0y),
+    pct_DLco_1y = if_else(is.na(FVC_1y), NA_real_, pct_DLco_1y),
+    pct_DLco_3y = if_else(is.na(FVC_3y), NA_real_, pct_DLco_3y),
+    pct_DLco_5y = if_else(is.na(FVC_5y), NA_real_, pct_DLco_5y),
+    # FVC低値の場合はDLco欠測
+    pct_DLco_0y = if_else(FVC_0y < 1.5, NA_real_, pct_DLco_0y),
+    pct_DLco_1y = if_else(FVC_1y < 1.5, NA_real_, pct_DLco_1y),
+    pct_DLco_3y = if_else(FVC_3y < 1.5, NA_real_, pct_DLco_3y),
+    pct_DLco_5y = if_else(FVC_5y < 1.5, NA_real_, pct_DLco_5y),
   ) %>% 
-  ungroup() %>%
-  View()
-  
-  select(index, dx, starts_with("FEV1.0_")) %>%
-  pivot_longer(
-    cols = starts_with("FEV1.0_"),
-    names_to = "period",
-    names_prefix = "FEV1_",
-    values_to = "FEV1"
-  ) %>%
-  ggplot(aes(x = period, y = FEV1, group = index)) +
-    geom_line(alpha = .2) +
-    facet_wrap(~dx, nrow = 2)
+  ungroup() %>% 
+  relocate(ends_with("_0y"), .after = everything()) %>% 
+  relocate(ends_with("_1y"), .after = everything()) %>% 
+  relocate(ends_with("_3y"), .after = everything()) %>% 
+  relocate(ends_with("_5y"), .after = everything()) 
+
+
