@@ -160,11 +160,9 @@ data_background <-
   # 年齢は1行ずつ処理して生成
   rowwise() %>% 
   mutate(
-    age = case_when(
-      dx == "IPF"  ~ rnorm(1, mean = 70, sd = 5),
-      dx == "NSIP" ~ rnorm(1, mean = 60, sd = 7),
-      dx == "COP"  ~ rnorm(1, mean = 60, sd = 10)
-    )
+    age = case_when(dx == "IPF"  ~ rnorm(1, mean = 70, sd = 5),
+                    dx == "NSIP" ~ rnorm(1, mean = 60, sd = 7),
+                    dx == "COP"  ~ rnorm(1, mean = 60, sd = 10))
   ) %>%
   ungroup() %>% 
   slice_sample(n = nrow(.), replace = FALSE) %>% 
@@ -250,3 +248,46 @@ data_indexed <-
   ) %>% 
   arrange(index)
 
+# step 4: 検査データ ---------------------------------------------------------------
+
+# 結果再現のために乱数シードを固定
+set.seed(12345)
+
+# KL-6は対数正規分布とする
+# 　登録時（0y) で 平均を IPF 1000, NSIP 800, COP 1200 で求める
+#   1年後 (1y) 、3年後 (3y)、5年後 (5y) は登録時に適当な係数＋ノイズを掛けていく
+
+
+data_indexed %>% 
+  rowwise() %>% 
+  mutate(
+    KL6_0y = case_when(dx == "IPF"  ~ rlnorm(1, meanlog = log(1000), sd = 0.3),
+                       dx == "NSIP" ~ rlnorm(1, meanlog = log(800) , sd = 0.2),
+                       dx == "COP"  ~ rlnorm(1, meanlog = log(1200), sd = 0.4)),
+    KL6_1y = case_when(dx == "COP" & died == 0 ~ KL6_0y * rnorm(1, 0.6, 0.2),
+                       died == 0               ~ KL6_0y * rnorm(1, 1.0, 0.2),
+                       died == 1               ~ KL6_0y * rnorm(1, 1.2, 0.2)),
+    KL6_3y = case_when(dx == "COP" & died == 0 ~ KL6_1y * rnorm(1, 0.8, 0.2),
+                       died == 0               ~ KL6_1y * rnorm(1, 0.9, 0.3),
+                       died == 1               ~ KL6_1y * rnorm(1, 1.2, 0.2)),
+    KL6_5y = case_when(dx == "COP" & died == 0 ~ KL6_3y * rnorm(1, 1.0, 0.1),
+                       died == 0               ~ KL6_3y * rnorm(1, 0.9, 0.3),
+                       died == 1               ~ KL6_3y * rnorm(1, 1.2, 0.2)),
+    # KL-6は小数点以下を丸める
+    across(starts_with("KL6_"), round),
+    # 観察期間がそれぞれの時点に満たないものは除外
+    KL6_1y = if_else(time < 12 * 1, NA_real_, KL6_1y),
+    KL6_3y = if_else(time < 12 * 3, NA_real_, KL6_3y),
+    KL6_5y = if_else(time < 12 * 5, NA_real_, KL6_5y)
+  ) %>% 
+  ungroup() %>% 
+  select(index, dx, starts_with("KL6_")) %>%
+  pivot_longer(
+    cols = starts_with("KL6_"),
+    names_to = "period",
+    names_prefix = "KL6_",
+    values_to = "KL6"
+  ) %>%
+  ggplot(aes(x = period, y = KL6, group = index)) +
+    geom_line(alpha = .2) +
+    facet_wrap(~dx, nrow = 2)
