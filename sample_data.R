@@ -420,3 +420,6 @@ data_followup %>%
     exponentiate = TRUE,
     conf.level   = 0.95
   )
+
+# 完成品として一旦CSV保存
+write.csv(data_followup, file = "ip_10yrs_data.csv", fileEncoding = "utf-8")
