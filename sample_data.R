@@ -3,6 +3,7 @@
 library(tidyverse)
 library(survival)
 library(ggsurvfit)
+library(survminer)
 
 # まず違和感の少ない生存データを作ってから、背景因子を付け足していく
 
@@ -94,33 +95,6 @@ data_cop <-
   mutate(dx = "COP", .before = everything()) %>% 
   slice_sample(n = 50, replace = FALSE)  %>%
   mutate(no = row_number(), .before = everything())
-
-# test
-data_ipf %>% 
-  rbind(
-    data_nsip,
-    data_cop
-  ) %>% 
-  # 120ヶ月で打ち切り（死亡例は 120ヶ月以内にしてあるので生存群のみ）
-  mutate(time = if_else(time > 120, 120, time)) %>%
-  # 作図
-  ggsurvfit::survfit2(Surv(time, died) ~ dx, data = .) %>% 
-  ggsurvfit::ggsurvfit(size = 1) +
-    ggsurvfit::add_censor_mark() +
-    ggsurvfit::add_confidence_interval(type = "ribbon") +
-    ggsurvfit::add_risktable(risktable_stats = "n.risk") +
-    labs(
-      x = "Observation time (mo)"
-    ) +
-    scale_x_continuous(limits = c(0, 120), expand = c(0.03, 0.01),
-                       breaks = seq(0, 120, 12)) +
-    scale_y_continuous(limits = c(0, 1.0), expand = c(0.01, 0.01),
-                       labels = scales::percent) +
-    theme_classic(base_size = 14) +
-    theme(
-      axis.text  = element_text(colour = "black"),
-      panel.grid.major = element_line(colour = "lightgray")
-    )
 
 # step 2: 背景因子 ----------------------------------------------------------------
 
@@ -411,7 +385,7 @@ data_followup <-
   relocate(ends_with("_3y"), .after = everything()) %>% 
   relocate(ends_with("_5y"), .after = everything()) 
 
-# test
+# test ------------------------------------------------------------------------
 data_followup %>% 
   mutate(delta_FVC_1y = FVC_1y - FVC_0y) %>% 
   coxph(Surv(time, died) ~ dx + sex + age + delta_FVC_1y,
@@ -419,6 +393,36 @@ data_followup %>%
   gtsummary::tbl_regression(
     exponentiate = TRUE,
     conf.level   = 0.95
+  )
+
+survfit(Surv(time, died) ~ dx, data = data_followup) %>%
+  survminer::ggsurvplot(
+    conf.int      = TRUE,
+    risk.table    = TRUE,
+    ggtheme       = theme_survminer(base_size = 14),
+    tables.theme  = theme_cleantable(),
+    surv.scale    = "percent", 
+    break.time.by = 12,
+    xlab          = "Observation time (mo)",
+    legend        = "none"
+  )
+
+ggsurvfit::survfit2(Surv(time, died) ~ dx, data = data_followup) %>% 
+  ggsurvfit::ggsurvfit(size = 1) +
+  ggsurvfit::add_censor_mark() +
+  ggsurvfit::add_confidence_interval(type = "ribbon") +
+  ggsurvfit::add_risktable(risktable_stats = "n.risk") +
+  labs(
+    x = "Observation time (mo)"
+  ) +
+  scale_x_continuous(limits = c(0, 120), expand = c(0.03, 0.01),
+                     breaks = seq(0, 120, 12)) +
+  scale_y_continuous(limits = c(0, 1.0), expand = c(0.01, 0.01),
+                     labels = scales::percent) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text  = element_text(colour = "black"),
+    panel.grid.major = element_line(colour = "lightgray")
   )
 
 # 完成品として一旦CSV保存
