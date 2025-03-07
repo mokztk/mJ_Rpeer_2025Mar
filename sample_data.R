@@ -531,8 +531,8 @@ data_excel_ja_follow <- data_excel_ja %>%
 # Excelファイルに保存
 wb <- openxlsx::createWorkbook(creator = "MORI Kazutaka",
                                title   = "mJOHNSNOW peer-R vol.4 模擬データ")
-openxlsx::addWorksheet(wb, sheetName = "登録時")
-openxlsx::addWorksheet(wb, sheetName = "追跡調査")
+openxlsx::addWorksheet(wb, sheetName = "症例登録票")
+openxlsx::addWorksheet(wb, sheetName = "アウトカム")
 openxlsx::writeData(wb, sheet = 1, data_excel_ja_enroll)
 openxlsx::writeData(wb, sheet = 2, data_excel_ja_follow)
 openxlsx::saveWorkbook(wb, file = "ip_registry_data.xlsx", overwrite = TRUE)
