@@ -1,0 +1,381 @@
+---
+title: |
+    Tidyverseを活用したデータ前処理の実践：初級編 \
+    -- mJOHNSNOW R解析Peer勉強会 vol.4 --
+author: "MORI, Kazutaka"
+date-format: iso
+format:
+  html: 
+    fontsize: normal
+    page-layout: full
+    toc: true
+    toc-depth: 2
+    code-fold: show
+    html-math-method: katex
+    fig-format: svg
+    fig-height: 5
+    fig-width: 8
+    self-contained: true
+    number-sections: true
+    code-block-border-left: true
+    code-line-numbers: true
+    highlight-style: atom-one
+    df-print: tibble
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup}
+#| echo: false
+#| message: false
+
+# エラーメッセージ等の言語を日本語にする
+Sys.setenv(LANGUAGE="ja")
+
+# 使用するライブラリ
+library(tidyverse)
+library(magrittr)
+
+# 新しい機能を利用するため古いものは更新
+if (as.numeric(gsub(".\\d+$", "", packageVersion("ggsci"))) < 3.2) {
+  # ggsci::scale_colour_observable() を使用するため ver.3.2 以降が必要
+  install.packages("ggsci", repos = "https://cran.rstudio.org/")
+}
+```
+
+```{css, echo = FALSE}
+/* section number の後ろに . をつける */
+span.header-section-number:after {
+  content: ". ";
+}
+
+/* 結果の表示を線で囲む */
+div.cell-output-stderr {
+    margin-bottom: 0.5em;
+    padding: 0.5em;
+    border: dashed 1px #c00;
+    border-radius: 4px;
+}
+
+div.cell-output-stdout {
+    margin-bottom: 0.5em;
+    padding: 0.5em;
+    border: solid 1px black;
+    border-radius: 4px;
+}
+
+/* 印刷用の設定 */
+@media print {
+  /* タイトル部分の余白 */
+  header#title-block-header {
+    padding-left: 2em;
+    padding-right: 2em;
+  }
+
+  /* 印刷時の表の改ページ関係 */
+  thead {
+      display: table-header-group;
+  }
+  
+  /* 印刷時にリンクの後ろにURLを付けない */
+  a[href]:after {
+    content: "";
+  }
+  
+  /* 折りたたんだ [Code] は印刷しない */
+  details.code-fold:not([open]) {
+    display: none;
+  }
+  
+  /* 水平線を表示する */
+  hr {
+    border-top: solid #888 2px;
+  }
+}
+
+```
+
+# はじめに
+
+## データクリーニングの方針
+
+「見る」あるいは「見せる」ための表や雑然とした表を、コンピューターで認識できて（機械判読可能）解析に使用できる表に変形・変換する方針を考えます。100%従えなくとも大まかな目標としていくつか代表的なルールを示します。
+
+また、元のファイルは極力編集せず編集の内容や経過はコードに残すようにします。
+
+### 総務省「統計表における機械判読可能なデータの表記方法の統一ルール」
+
+2020年に政府統計の総合窓口（e-Stat）に掲載する統計表におけるデータ表記方法の統一ルールとして総務省が策定した、「[統計表における機械判読可能なデータの表記方法の統一ルールの策定](https://www.soumu.go.jp/menu_news/s-news/01toukatsu01_02000186.html) 」では、機械判読可能であることを重視して以下のようなルールが示されています。
+
+Excelなど特定のソフトや政府統計に依存しない部分を抜粋すると、
+
+- 1セル1データとなっている
+- 数値データは数値属性とし、文字列（注：単位、注釈など）を含まない
+- スペースや改行等で体裁を整えていない
+- 項目名等を省略していない（「薬剤A」 「B」 「C」は「薬剤A」 「薬剤B」 「薬剤C」とする）
+- データの単位を記載している（注：数値とは別のセルに記載している）
+- 機種依存文字を使用していない
+- データが分断されていない
+- 1シートに複数の表が掲載されていない
+
+### Tidy data（整然データ）: Wickham H. 2014
+
+`tidyverse` の作者である Hadley Wickham 氏が提唱 (Journal of Statistical Software. 59: 1-23, 2014) した概念で、「データの構造 (structure)」と「意味 (semantic)」を一致させることを目指しています。
+
+1. 個々の変数 (variable) が1つの列 (column) をなす。
+2. 個々の観測 (observation) が1つの行 (row) をなす。
+3. 個々の観測の構成単位の類型 (type of observational unit) が1つの表 (table) をなす。
+4. 個々の値 (value) が1つのセル (cell) をなす
+
+`tidyverse` はこの思想に基づいて作成されており、これらのパッケージをフルに活用するためには tidy data を意識することが必要です。
+
+{{< pagebreak >}}
+
+## コーディングスタイル
+
+R に限らず、プログラムのコードは読みやすさやメンテナンス性を確保するため一定のルールに沿って記載することが勧められています。Rではいくつかの有名なコーディングスタイルのガイドがあります。
+
+- [Google’s R Style Guide](https://google.github.io/styleguide/Rguide.html)
+- [Tidyverse style guide](https://style.tidyverse.org/)
+
+カッコ類の使い方、1行の文字数、使用するパイプ（magrittr pipe (`%>%`) vs. base pipe (`|>`) ）、変数などの名前の付け方などが記載されています。全部従うのはなかなか大変ですが、変数名のルールなどは一貫性を持って付けた方が良いです。
+
+今回はシンプルな Google's R style guide にできるだけ沿ってみます：
+
+- 変数名は語頭を大文字にしてつなげる `BigCamelCase` (`PascalCase`) 
+- データフレームについての記載を簡略化する `attach()` は使用しない
+- 右向きの代入記号 `->` は使用しない
+- 関数の戻り値は明示的に `return()` を使用する
+- 外部関数の名前空間（Rの標準パッケージ以外のパッケージ名）を `package::function()` で明示することを基本とする。ただしパイプ演算子など一部例外あり
+- （明記されていないが）パイプは magrittr pipe（`%>%`）を使用する
+
+Tidyverse style guide のように小文字の単語を _ でつなぐ `snake_case` を使用する人も多いです。
+（筆者も普段は Tidyverse style guide 寄りの snake_case &amp; base pipe 派です）
+
+{{< pagebreak >}}
+
+# サンプルデータ
+
+厚生労働省 人口動態統計 より、2023年の死因別死亡数のデータを使用します。
+
+[https://www.e-stat.go.jp/stat-search/files?tclass=000001041646&cycle=7&year=20230](https://www.e-stat.go.jp/stat-search/files?tclass=000001041646&cycle=7&year=20230)
+
+より、「[5-13 死因（死因簡単分類）別にみた性・年次別死亡数及び死亡率（人口10万対）/ 2023年](https://www.e-stat.go.jp/stat-search/file-download?statInfId=000040206118&fileKind=1)」（公開日 2024-09-17）の CSVファイル（mc130000.csv）を Working Directory にダウンロードして下さい。
+
+> 今回はファイルから読み込んでデータクリーニングを行う練習としてCSVファイルをダウンロードして解析しますが、データベースへの収録が進んでいる過去年度のものは e-Stat API を用いてソフトウェア的に取得することもできます。興味のある方は `estatapi` パッケージを調べてみて下さい。該当のstatsDataId は "0003411657" です。
+
+## ファイルの構造
+
+いきなり R で触る前に、まずは Excel などで開いてファイルの中身を俯瞰します。
+
+- 1-13行目：ファイルの説明
+- 14-15行目：表の見出し。14行目の「死亡数」と「死亡率」の下に各年が並ぶ
+- 16行目～：死因別の死亡数・死亡率
+    - 16-156行目：総数
+    - 157-297行目：男性
+    - 298-438行目：女性
+
+内容としても、整形のためのスペースが多数あったり数値が存在しない部分に色々な記号が使用されたりしている事がわかります。
+
+{{< pagebreak >}}
+
+## 読み込み
+
+tidyverse の一角である `readr::read_csv()` を使用します。文字コードは Shift-JIS、先頭の解説部分から見出し1行目までの 14行は読み飛ばします。
+
+```{r read_csv}
+#| message: false
+#| warning: false
+
+library(tidyverse)
+
+RawData <- readr::read_csv(file   = "mc130000.csv", 
+                           locale = readr::locale(encoding = "Shift-JIS"),
+                           skip   = 14)
+```
+
+たくさんメッセージが出ますがここでは省略しています。読み込む際にどのような問題があってどのように変換されたか書かれているので、一度は目を通してみて下さい。
+
+表部分の見出しは 14-15行目の2行が使われており、14行目にある「死亡数」や「死亡率」を反映していないので重複が発生するため、もともとの列番号をつけた列名が付与されています。
+
+```{r csv_head}
+RawData %>% colnames()
+```
+
+# 死亡数について整理
+
+1ページの表に粗死亡数と人口10万人対の死亡率が一緒に掲載されていますが、ここでは死亡数の方を見ていきます。
+
+必要そうな処理としては以下のようなものが考えられます：
+
+1. 列名（変数名）を R で扱いやすいように修正する
+2. 死因欄に性別の見出しも入っているので、性別を先に分離する
+3. 死因欄の整形のためのスペースを取り除く
+4. 数値であるべきところを数値として扱えるように変換する
+5. （オプション）Tidy data に整形する
+
+{{< pagebreak >}}
+
+## Step1: 列名の付け直し【処理 1】
+
+まだ列名を整理していないので、列番号を指定して 1-15列目を抽出した後で、列名を扱いやすいよう英数字で付け直します。
+
+また、R では数字で始まる変数名は好ましくないので、各年の頭に "Death_" をつけておきます。\
+（一見 snake case のようですが、後で文字列を区切るための目印です。Death@ や単に D_ などでも構いませんが、演算記号を含む Death- や +Death+ は文法上エラーになります）
+
+> 以降、作業内容がわかるよう可能な限り `tidylog` パッケージの関数に置き換えています。慣れてきたら適宜 `dplyr` や `tidyr` に戻してください。
+
+```{r parse_data1}
+Step1Data <- RawData %>%
+  tidylog::select(1:15) %>% 
+  tidylog::rename_with(
+    ~ c("Cause",
+        paste0("Death_", c(1995, 2000, 2005, 2010, 2014:2023)))
+  )
+
+head(Step1Data)    # 内容の確認
+```
+
+{{< pagebreak >}}
+
+## Step2: 死因列（Cause）の整理【処理 2+3】
+
+手順は大まかに以下のようになります。
+
+- 死因と同じ欄にある「総数」、「男」、「女」は性別の見出しなので「性別」列を作って分離
+- Cause列の数字5桁コード（病名簡単分類）と死因は "_" でつなぐ
+- 死因「死亡総数」は「00000_死亡総数」とする（e-Stat API のデータに準拠）
+- 余計な空白は削除する
+- 最後に 5桁コードと病名を分離する
+
+```{r parse_data2}
+Step2Data <- Step1Data %>% 
+  # 性別列を作る
+  tidylog::mutate(
+    # 死因列の空白より後ろを削除すると、「総数」「男」「女」以外は空か数字のみになる
+    Sex = stringr::str_replace_all(Cause, "\\s.*$", ""),
+    # 数字も削除すると、Sexは「総数」「男」「女」しか残らない
+    Sex = stringr::str_replace_all(Sex, "\\d+", ""),
+    # 空になった行は NA_character_（NAの文字列型）＝空欄に置き換える
+    Sex = dplyr::if_else(Sex == '', NA_character_, Sex),
+  ) %>% 
+  # Sex列の空欄を下向きに埋めた後、実死亡数がない行＝もともと性別のみ書かれていた行を消す
+  tidylog::fill(Sex, .direction = "down") %>% 
+  tidylog::drop_na(Death_2023) %>% 
+  # 死因簡単分類の整理
+  tidylog::mutate(
+    # 空白を全部消す
+    Cause = stringr::str_replace_all(Cause, "\\s*", ""),
+    # 死亡総数は 00000_ をつける。それ以外は先頭の連続した数字のあとに _ をつける
+    Cause = dplyr::if_else(Cause == "死亡総数",
+                           "00000_死亡総数",
+                           stringr::str_replace_all(Cause, "^(\\d+)", "\\1_"))
+  ) %>% 
+  # コードと病名を分離する
+  tidylog::mutate(
+    CauseCode = stringr::str_split(Cause, "_", simplify = TRUE)[,1],
+    CauseName = stringr::str_split(Cause, "_", simplify = TRUE)[,2]
+  ) %>% 
+  # 必要な項目を並べ替え
+  tidylog::select(CauseCode, CauseName, Sex, starts_with("Death_"))
+
+head(Step2Data)  # 確認
+```
+
+## Step3: 死亡数を数値として扱えるようにする【処理 4】
+
+```{r parse_data3-1}
+dplyr::glimpse(Step2Data)      # 各列の型を確認
+```
+
+男性の婦人科癌など値がない病名については「・」や「-」などで埋められているため、本来数値であるはずの `Death_****` がすべて "chr" つまり文字列扱いになっており、それを数値に変換します。
+
+{{< pagebreak >}}
+
+```{r parse_data3-2}
+Step3Data <- Step2Data %>% 
+  # Death_1995 列から Death_2023 列にそれぞれ as.integer() を適用する
+  tidylog::mutate(dplyr::across(Death_1995:Death_2023, as.integer))
+
+head(Step3Data)
+```
+
+{{< pagebreak >}}
+
+## Step4: 年も数値にする【処理 4】＋Tidy data に整形する【処理 5】
+
+`tidyr::pivot_longer()` で年代が縦に並ぶ縦長の表に変形し、年も数値として扱えるようにします。
+
+```{r step4_long}
+Step4Data <- Step3Data %>% 
+  tidylog::pivot_longer(
+    cols            = dplyr::starts_with("Death_"),   # Death_**** の列を変換対象にする
+    names_to        = "Year",                         # 対象列の見出しを Year 列に格納  
+    names_prefix    = "Death_",                       #   その際に冒頭の "Death_" は除く
+    names_transform = as.integer,                     #   年は整数として扱えるようにする 
+    values_to       = "Death"                         # 対象列の値（死亡数）は Death 列に格納
+  )
+
+head(Step4Data, n = 8)
+```
+
+このままでは、Sex列に男女別の値と総数という意味がやや異なるデータが混在しているので、Sex列を横に展開します。（総数の表と男女の表の2つに分割しても tidy data と言えるでしょう）
+
+```{r step4_wide}
+TidyData <- Step4Data %>% 
+  tidylog::pivot_wider(
+    names_from  = "Sex",     # 新たな列名にするのは Sex
+    values_from = "Death"    # (Cause + Year) x Sex に対応する死因をいれる
+  ) %>% 
+  tidylog::rename(Total = 総数, Male = 男, Female = 女)    # 列名を英数化
+
+head(TidyData, n = 10)
+```
+
+これで tidy data の要件を満たす状態となりましたが、解析については内容によっては Step3 のデータの方が扱いやすい場合もあります。
+
+{{< pagebreak >}}
+
+# 集計例
+
+```{r summarise_cancer}
+# OSを見てフォントを選択
+font_sans <- switch(Sys.info()["sysname"],
+                    "Windows" = "Yu Gothic",
+                    "Darwin"  = "Hiragino Sans",
+                    "Noto Sans CJK JP")
+
+Step3Data %>% 
+  # 性別「総数」のみに絞る
+  tidylog::filter(Sex == "総数") %>% 
+  # 疾患「悪性新生物＜腫瘍＞」（コード 021**）を抽出、全臓器の合計（コード 02100）は除外
+  tidylog::filter(stringr::str_starts(CauseCode, "021")) %>% 
+  tidylog::filter(CauseCode != "02100") %>% 
+  # ほぼ全てに共通する「～の悪性新生物＜腫瘍＞」を削除
+  tidylog::mutate(CauseName = stringr::str_remove_all(CauseName, "の悪性新生物＜腫瘍＞")) %>% 
+  # 2023年の上位10臓器を抽出（その他は除外）
+  tidylog::filter(!stringr::str_starts(CauseName, "その他")) %>%
+  dplyr::arrange(desc(Death_2023)) %>%
+  tidylog::slice_head(n = 10) %>%
+  # 病名を多い順に並べ替えておく（順序変数化）
+  tidylog::mutate(
+    CauseName = forcats::fct_relevel(CauseName,
+                                     CauseName[order(Death_2023, decreasing = TRUE)])
+  ) %>% 
+  # 作図用に縦持ちに変換
+  tidylog::pivot_longer(
+    cols            = dplyr::starts_with("Death_"),  # Death_**** の列を変換対象にする
+    names_to        = "Year",                        # 対象列の見出しを Year 列に格納  
+    names_prefix    = "Death_",                      #   その際に冒頭の "Death_" は除く
+    names_transform = as.integer,                    #   年は整数として扱えるようにする 
+    values_to       = "Death"                        # 死亡数は Death 列に格納
+  ) %>% 
+  # 作図
+  ggplot2::ggplot(aes(x = Year, y = Death, colour = CauseName, group = CauseName)) +
+    ggplot2::geom_line(linewidth = 1) +
+    ggplot2::geom_point(size = 2) +
+    ggsci::scale_colour_observable() +
+    ggplot2::theme_classic(base_family = font_sans) +
+    ggplot2::theme(axis.text = element_text(colour = "black"))
+```
+
