@@ -457,6 +457,9 @@ data_excel <-
   # 個別の合併症は削除
   select(!starts_with("com_"))
 
+# 加工前をExcelファイルに保存しておく
+openxlsx::write.xlsx(data_excel, file = "ip_10yrs_data.xlsx")
+
 # 手入力を想定したブレ、欠測をいくつか入れる
 set.seed(123)
 
