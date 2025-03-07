@@ -1,6 +1,7 @@
 # mJOHNSNOW R解析ピア勉強会用 サンプルの10年生存データ
 
 library(tidyverse)
+library(magrittr)
 library(survival)
 library(ggsurvfit)
 library(survminer)
@@ -428,3 +429,107 @@ ggsurvfit::survfit2(Surv(time, died) ~ dx, data = data_followup) %>%
 # 完成品として一旦CSV保存
 write.csv(data_followup, file = "ip_10yrs_data.csv",
           fileEncoding = "Shift-JIS", row.names = FALSE, na = "")
+
+
+# step 5: Excelファイル作成 ---------------------------------------------------------
+
+data_excel <-
+  data_followup %>% 
+  mutate(
+    # 3つの合併症をまとめる
+    comorbidities = paste(
+      if_else(com_diabetes     == "あり", "糖尿病", ""),
+      if_else(com_arrythmia    == "あり", "不整脈", ""),
+      if_else(com_hypertention == "あり", "高血圧", ""),
+      sep = "/"),
+    # 改行区切りに変更し、3つ全てない場合は「なし」とする
+    comorbidities = comorbidities %>% 
+      # 連続した / はひとつにする
+      str_replace_all("//", "/") %>%
+      # 行頭（＝糖尿病なし）、末尾（＝高血圧なし）の / を削除
+      str_remove_all("(^/|/$)") %>% 
+      # 残った / を改行に置き換える
+      str_replace_all("/", "\n") %>%
+      # 空欄＝すべてなし、を「なし」とする
+      str_replace_all("^$", "なし"),
+    .before = "com_diabetes"
+  ) %>% 
+  # 個別の合併症は削除
+  select(!starts_with("com_"))
+
+# 手入力を想定したブレ、欠測をいくつか入れる
+set.seed(123)
+
+# 合併症を FileMaker からエクスポートした改行区切りではなく、手入力風「、」区切りにする
+data_excel$comorbidities[sample(1:nrow(data_excel), 20)] %<>% 
+  str_replace_all("\n", "、")
+
+# 合併症の欠測を30例、うち9例は手入力で「不明」と入ったようにする
+data_excel$comorbidities[sample(1:nrow(data_excel), 30)] <-
+  sample(c("不明", NA), 30, replace = T, prob = c(0.3, 0.7))
+
+# KL-6にいくつか欠測を入れる
+data_excel$KL6_0y[sample(1:nrow(data_excel), 10)] <- NA_integer_
+data_excel$KL6_1y[sample(1:nrow(data_excel), 15)] <- NA_integer_
+data_excel$KL6_3y[sample(1:nrow(data_excel), 20)] <- NA_integer_
+data_excel$KL6_5y[sample(1:nrow(data_excel), 30)] <- NA_integer_
+
+# FVC, FEV1 にいくつか 小数点抜け（100倍）を入れる
+data_excel$FVC_0y[sample(1:nrow(data_excel), 3)]    %<>% {. * 100} 
+data_excel$FVC_3y[sample(1:nrow(data_excel), 3)]    %<>% {. * 100} 
+data_excel$FEV1.0_1y[sample(1:nrow(data_excel), 3)] %<>% {. * 100} 
+data_excel$FEV1.0_5y[sample(1:nrow(data_excel), 3)] %<>% {. * 100} 
+
+# DLcoをランダムに欠測にする
+data_excel$pct_DLco_0y[sample(1:nrow(data_excel), 20)] <- NA_real_
+data_excel$pct_DLco_1y[sample(1:nrow(data_excel), 25)] <- NA_real_
+data_excel$pct_DLco_3y[sample(1:nrow(data_excel), 30)] <- NA_real_
+data_excel$pct_DLco_5y[sample(1:nrow(data_excel), 50)] <- NA_real_
+
+# 列名を "それらしい" 日本語につけ直す
+cols_original <- data_excel %>% names()
+
+#  [1] "index"         "facility"      "Pt_ID"         "date_enroll"   "sex"          
+#  [6] "age"           "date_birth"    "dx"            "date_outcome"  "time"         
+# [11] "died"          "comorbidities" "KL6_0y"        "FVC_0y"        "FEV1.0_0y"    
+# [16] "pct_DLco_0y"   "KL6_1y"        "FVC_1y"        "FEV1.0_1y"     "pct_DLco_1y"  
+# [21] "KL6_3y"        "FVC_3y"        "FEV1.0_3y"     "pct_DLco_3y"   "KL6_5y"       
+# [26] "FVC_5y"        "FEV1.0_5y"     "pct_DLco_5y"  
+
+cols_excel <- c(
+  "登録番号", "施設", "施設ID", "登録日", "性別", "登録時年齢", "生年月日",
+  "診断", "転帰日", "観察期間_月", "転帰_打ち切り0死亡1", "合併症",
+  "KL6_登録時", "FVC_登録時", "FEV1_登録時", "%DLco_登録時",
+  "KL6_1年後", "FVC_1年後", "FEV1_1年後", "%DLco_1年後",
+  "KL6_3年後", "FVC_3年後", "FEV1_3年後", "%DLco_3年後",
+  "KL6_5年後", "FVC_5年後", "FEV1_5年後", "%DLco_5年後"
+)
+
+data_excel_ja <- data_excel %>% rename_with(~ cols_excel)
+
+# 登録時データと追跡データに分ける
+data_excel_ja_enroll <- data_excel_ja %>% 
+  select(
+    登録番号, 施設, 施設ID, 登録日, 性別, 登録時年齢, 生年月日,
+    診断, 合併症, KL6_登録時, FVC_登録時, FEV1_登録時, `%DLco_登録時`
+  )
+
+data_excel_ja_follow <- data_excel_ja %>% 
+  select(
+    登録番号, 施設, 施設ID, 転帰日, 転帰_打ち切り0死亡1,
+    KL6_1年後, FVC_1年後, FEV1_1年後, `%DLco_1年後`,
+    KL6_3年後, FVC_3年後, FEV1_3年後, `%DLco_3年後`,
+    KL6_5年後, FVC_5年後, FEV1_5年後, `%DLco_5年後`
+  ) %>% 
+  # あえて列名に改行を入れたり、施設順に並べ替えたりを入れる
+  rename("転帰\n打ち切り0死亡1" = 転帰_打ち切り0死亡1) %>% 
+  arrange(施設, 登録番号)
+
+# Excelファイルに保存
+wb <- openxlsx::createWorkbook(creator = "MORI Kazutaka",
+                               title   = "mJOHNSNOW peer-R vol.4 模擬データ")
+openxlsx::addWorksheet(wb, sheetName = "登録時")
+openxlsx::addWorksheet(wb, sheetName = "追跡調査")
+openxlsx::writeData(wb, sheet = 1, data_excel_ja_enroll)
+openxlsx::writeData(wb, sheet = 2, data_excel_ja_follow)
+openxlsx::saveWorkbook(wb, file = "ip_registry_data.xlsx", overwrite = TRUE)
