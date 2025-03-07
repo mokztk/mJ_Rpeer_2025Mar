@@ -427,4 +427,4 @@ ggsurvfit::survfit2(Surv(time, died) ~ dx, data = data_followup) %>%
 
 # 完成品として一旦CSV保存
 write.csv(data_followup, file = "ip_10yrs_data.csv",
-          fileEncoding = "utf-8", row.names = FALSE, na = "")
+          fileEncoding = "Shift-JIS", row.names = FALSE, na = "")
