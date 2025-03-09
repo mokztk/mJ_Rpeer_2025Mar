@@ -18,7 +18,8 @@ format:
     self-contained: true
     number-sections: true
     code-block-border-left: true
-    code-line-numbers: true
+    code-line-numbers: false
+    code-overflow: wrap
     highlight-style: atom-one
     df-print: tibble
   typst:
@@ -27,7 +28,7 @@ format:
     fig-format: svg
     fig-width: 7
     fig-height: 4
-    toc: false
+    toc: true
     number-sections: true
     number-depth: 3
     section-numbering: 1-1-1.
@@ -40,7 +41,8 @@ format:
       - text: |
           // mainfont 指定（front matter の mainfont: では複数指定できない）
           #set text(
-            font: ("Yu Mincho", "Hiragino Mincho ProN", "Noto Serif CJK JP", "Noto Serif JP"),
+            font: ("Yu Mincho", "Hiragino Mincho ProN",
+                   "Noto Serif CJK JP", "Noto Serif JP"),
             fallback: true
           )
           // 見出し後は少しあける
@@ -62,9 +64,6 @@ format:
             #set text(fill: blue)
             #underline(it)
           ]
-          // front matter の toc: true で作成される目次は使わず、
-          // タイトルなしの目次をはじめに表示
-          #pad(bottom: 14pt, outline(title: none, depth: 3, indent: auto))
 editor_options: 
   chunk_output_type: console
 ---
@@ -270,13 +269,17 @@ RawData %>% colnames()
 :::
 
 ```{r parse_data1}
+#| collapse: true
+
 Step1Data <- RawData %>%
   tidylog::select(1:15) %>% 
   tidylog::rename_with(
     ~ c("Cause",
         paste0("Death_", c(1995, 2000, 2005, 2010, 2014:2023)))
   )
+```
 
+```{r parse_data1_result}
 head(Step1Data)    # 内容の確認
 ```
 
@@ -295,6 +298,8 @@ head(Step1Data)    # 内容の確認
 - 最後に 5桁コードと病名を分離する
 
 ```{r parse_data2}
+#| collapse: true
+
 Step2Data <- Step1Data %>% 
   # 性別列を作る
   tidylog::mutate(
@@ -324,7 +329,9 @@ Step2Data <- Step1Data %>%
   ) %>% 
   # 必要な項目を並べ替え
   tidylog::select(CauseCode, CauseName, Sex, starts_with("Death_"))
+```
 
+```{r pase_data2_result}
 head(Step2Data)  # 確認
 ```
 
@@ -337,10 +344,14 @@ dplyr::glimpse(Step2Data)      # 各列の型を確認
 男性の婦人科癌など値がない病名については「・」や「-」などで埋められているため、本来数値であるはずの `Death_****` がすべて "chr" つまり文字列扱いになっており、それを数値に変換します。
 
 ```{r parse_data3-2}
+#| collapse: true
+
 Step3Data <- Step2Data %>% 
   # Death_1995 列から Death_2023 列にそれぞれ as.integer() を適用する
   tidylog::mutate(dplyr::across(Death_1995:Death_2023, as.integer))
+```
 
+```{r parse_data3-2_result}
 head(Step3Data)
 ```
 
@@ -349,6 +360,8 @@ head(Step3Data)
 `tidyr::pivot_longer()` で年代が縦に並ぶ縦長の表に変形し、年も数値として扱えるようにします。
 
 ```{r step4_long}
+#| collapse: true
+
 Step4Data <- Step3Data %>% 
   tidylog::pivot_longer(
     cols            = dplyr::starts_with("Death_"),   # Death_**** の列を変換対象にする
@@ -357,7 +370,9 @@ Step4Data <- Step3Data %>%
     names_transform = as.integer,                     #   年は整数として扱えるようにする 
     values_to       = "Death"                         # 対象列の値（死亡数）は Death 列に格納
   )
+```
 
+```{r step4_long_result}
 head(Step4Data, n = 8)
 ```
 
@@ -366,13 +381,17 @@ head(Step4Data, n = 8)
 {{< pagebreak >}}
 
 ```{r step4_wide}
+#| collapse: true
+
 TidyData <- Step4Data %>% 
   tidylog::pivot_wider(
     names_from  = "Sex",     # 新たな列名にするのは Sex
     values_from = "Death"    # (Cause + Year) x Sex に対応する死因をいれる
   ) %>% 
   tidylog::rename(Total = 総数, Male = 男, Female = 女)    # 列名を英数化
+```
 
+```{r step4_wide_result}
 head(TidyData, n = 10)
 ```
 
@@ -383,6 +402,8 @@ head(TidyData, n = 10)
 # 集計例
 
 ```{r summarise_cancer}
+#| collapse: true
+
 # OSを見てフォントを選択
 font_sans <- switch(Sys.info()["sysname"],
                     "Windows" = "Yu Gothic",
