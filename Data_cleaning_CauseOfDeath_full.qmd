@@ -27,7 +27,7 @@ format:
     fontsize: 11pt
     fig-format: svg
     fig-width: 7
-    fig-height: 4
+    fig-height: 3.5
     toc: true
     number-sections: true
     number-depth: 3
@@ -151,10 +151,7 @@ Excelなど特定のソフトや政府統計に依存しない部分を抜粋す
 - **数値データは数値属性**とし、文字列（注：単位、注釈など）を含まない
 - スペースや改行等で体裁を整えていない
 - **項目名等を省略していない**（「薬剤A」 「B」 「C」は「薬剤A」 「薬剤B」 「薬剤C」とする）
-- データの単位を記載している（注：数値とは別のセルに記載している）
-- 機種依存文字を使用していない
-- データが分断されていない
-- 1シートに複数の表が掲載されていない
+- データが分断されていない、1シートに複数の表が掲載されていない
 
 ### Tidy data（整然データ）: Wickham H. 2014
 
@@ -178,12 +175,12 @@ R に限らず、プログラムのコードは読みやすさやメンテナン
 
 | 命名規則       | 説明                                     | 採用例                    |
 |----------------|------------------------------------------|---------------------------|
-| snake_case     | _ で小文字の単語をつなぐ                 | Tidyverse style guide     |
+| snake_case     | "_" で小文字の単語をつなぐ               | Tidyverse style guide     |
 | camelCase      | 最初の単語は小文字、2語目以降は単語のはじめを大文字にしてつなぐ    | |
 | PascalCase \
   (BigCamelCase) | すべての単語のはじめを大文字にしてつなぐ | Google's R Style Guide    |
-| dot.case       | . で小文字の単語をつなぐ                 | (Rの関数等でよく使われる) |
-| kebab-case     | - で小文字の単語をつなぐ                 | (Rの文法上使えない)       |
+| dot.case       | "." で小文字の単語をつなぐ               | (Rの関数等でよく使われる) |
+| kebab-case     | "-" で小文字の単語をつなぐ               | (Rの文法上使えない)       |
 
 今回は Tidyverse style guide でも使われておりR界隈で使用する人が多い（私見）、小文字の単語を _ でつなぐ `snake_case` と mJOHNSNOW の講義でこれまでも使われている magrittr pipe (`%>%`) を使用します。\
 ちなみに、Tidyverse style guide では base pipe (`|>`) の機能が充実してきたことから現在は base pipe を使用するように推奨されています（筆者も普段は base pipe 派です）。
@@ -234,13 +231,13 @@ data_raw <- readr::read_csv(file   = "mc130000.csv",
 
 たくさんメッセージが出ますがここでは省略しています。読み込む際にどのような問題があってどのように変換されたか書かれているので、一度は目を通してみて下さい。
 
-表部分の見出しは 14-15行目の2行が使われており、14行目にある「死亡数」や「死亡率」を反映していないので重複が発生するため、もともとの列番号をつけた列名が付与されています。
+{{< pagebreak >}}
+
+表部分の見出しは 14-15行目の2行が使われており、14行目にある「死亡数」や「死亡率」を反映していないため重複が発生し、もともとの列番号をつけた列名が付与されています。
 
 ```{r csv_head}
 data_raw %>% colnames()
 ```
-
-{{< pagebreak >}}
 
 # 死亡数について整理
 
@@ -259,7 +256,7 @@ data_raw %>% colnames()
 まだ列名を整理していないので、`dplyr::select()` で列番号を指定して 1-15列目を抽出した後で、`dplyr::rename_with()` で列名をまとめて扱いやすいよう英数字に付け直します。
 
 また、R では数字で始まる変数名は好ましくないので、各年の頭に "Death_" をつけておきます。\
-（一見 snake case のようですが、後で文字列を区切るための目印です。Death@ や単に D_ などでも構いませんが、演算記号を含む Death- や +Death+ は文法上エラーになります）
+（後で文字列を区切るための目印です。Death@ や単に D_ などでも構いませんが、演算記号を含む Death- や +Death+ は文法上エラーになります）
 
 :::{.callout-tip}
 以降、作業内容がわかるよう可能な限り `tidylog` パッケージの関数に置き換えています。慣れてきたら適宜 `dplyr::` や `tidyr::` に戻してください。\
@@ -276,6 +273,8 @@ data_step1 <- data_raw %>%
         paste0("Death_", c(1995, 2000, 2005, 2010, 2014:2023)))
   )
 ```
+
+{{< pagebreak >}}
 
 ```{r parse_data1_result}
 head(data_step1)    # 内容の確認
@@ -299,7 +298,8 @@ head(data_step1)    # 内容の確認
 ## 頻出関数 *stringr::str_replace_all(string, pattern, replacement)*
 
 - 文字列 string 中の pattern に当てはまる部分を replacement に置き換える
-- pattern にはワイルドカード（正規表現）が使用可能
+- pattern にはワイルドカード・正規表現が使用可能
+    - [String manipulation with stringr :: CHEATSHEET](https://rstudio.github.io/cheatsheets/strings.pdf) （注：リンク先はPDF）2ページ目の一覧を参照
 - pattern 中で () で囲むことで、replacement の中で登場順に `\\1`, `\\2`, ... で引用可能
 - おもに `dplyr::mutate()` の中で使われる
 :::
@@ -338,6 +338,8 @@ data_step2 <- data_step1 %>%
   tidylog::select(Cause_Code, Cause_Name, Sex, starts_with("Death_"))
 ```
 
+{{< pagebreak >}}
+
 ```{r pase_data2_result}
 head(data_step2)  # 確認
 ```
@@ -366,6 +368,13 @@ dplyr::glimpse(data_step3)
 
 `tidyr::pivot_longer()` で年代が縦に並ぶ縦長の表に変形し、あわせて年も数値として扱えるようにします。
 
+:::{.callout-tip}
+## tidyr::pivot_longer() / pivot_wider()
+
+表を1例1行形式の横持ち（wide）と解析に使いやすい縦持ち（long）に相互に変換する重要関数です。
+詳細は、[Data tidying with tidyr :: CHEATSHEET](https://rstudio.github.io/cheatsheets/tidyr.pdf) （注：リンク先はPDF）の Reshape Data セクションの図を見てください。
+:::
+
 ```{r step4_long}
 #| collapse: true
 
@@ -384,8 +393,6 @@ head(data_step4_long, n = 8)
 ```
 
 このままでは、Sex列に男女別の値と総数という意味がやや異なるデータが混在しているので、Sex列を横に展開します。（総数の表と男女の表の2つに分割しても tidy data と言えるでしょう）
-
-{{< pagebreak >}}
 
 ```{r step4_wide}
 #| collapse: true
@@ -446,6 +453,12 @@ data_step3 %>%
   ggplot2::ggplot(aes(x = Year, y = Death, colour = Cause_Name, group = Cause_Name)) +
     ggplot2::geom_line(linewidth = 1) +
     ggplot2::geom_point(size = 2) +
+    ggplot2::labs(
+      title  = "悪性新生物による総死亡数の推移",
+      x      = "年",
+      y      = "死亡総数",
+      colour = "原発臓器"
+    ) +
     ggsci::scale_colour_observable() +
     ggplot2::theme_classic(base_family = font_sans, base_size = 14) +
     ggplot2::theme(axis.text = element_text(colour = "black"))
