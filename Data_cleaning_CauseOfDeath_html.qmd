@@ -162,6 +162,8 @@ R に限らず、プログラムのコードは読みやすさやメンテナン
 より、「[5-13 死因（死因簡単分類）別にみた性・年次別死亡数及び死亡率（人口10万対）/ 2023年](https://www.e-stat.go.jp/stat-search/file-download?statInfId=000040206118&fileKind=1)」（公開日 2024-09-17）の CSVファイル（mc130000.csv）を Working Directory にダウンロードして下さい。
 
 :::{.callout-note}
+## e-Stat API
+
 今回はファイルから読み込んでデータクリーニングを行う練習としてCSVファイルをダウンロードして解析しますが、データベースへの収録が進んでいる過去年度のものは e-Stat API を用いてソフトウェア的に取得することもできます。興味のある方は `estatapi` パッケージを調べてみて下さい。該当のstatsDataId は "0003411657" です。
 :::
 
@@ -222,7 +224,7 @@ data_raw %>% colnames()
 また、R では数字で始まる変数名は好ましくないので、各年の頭に "Death_" をつけておきます。\
 （後で文字列を区切るための目印です。Death@ や単に D_ などでも構いませんが、演算記号を含む Death- や +Death+ は文法上エラーになります）
 
-:::{.callout-tip}
+:::{.callout-important}
 以降、作業内容がわかるよう可能な限り `tidylog` パッケージの関数に置き換えています。慣れてきたら適宜 `dplyr::` や `tidyr::` に戻してください。
 `library(tidylog)` で読み込んでいなければ、`tidylog::` を消せば元の tidyverse のものに戻ります。
 :::
@@ -258,6 +260,8 @@ head(data_step1)    # 内容の確認
 また、このセクションでは普段の操作で Console に出力される結果をそのまま掲載するために結果の表示の仕方を変えています。
 
 :::{.callout-note}
+## パイプの途中経過を確認したいとき
+
 既にある長いパイプラインのコードの動作を確認したいときは、`%>%` の後に `return()` 関数をつなぐことでそこまでで一旦終了としてその段階の結果を確認することが出来ます。（なお、base pipe では `|> return()` を使うことは出来ません）。
 :::
 
@@ -287,7 +291,7 @@ data_step2_1 <- data_step1 %>%
     Sex = stringr::str_replace_all(Sex, "\\d+", ""),
     # 空になった行は NA_character_（NAの文字列型）＝空欄に置き換える
     Sex = dplyr::if_else(Sex == '', NA_character_, Sex),
-    # 説明陽に、性別列を死因列の次につくる（特に指定しないと末尾になる）
+    # 説明用に、性別列を死因列の次につくる（特に指定しないと末尾になる）
     .after = "Cause"
   )
 ```
@@ -335,7 +339,7 @@ data_step2_3 <- data_step2_2 %>%
 ```{r parse_data2_3res}
 #| collapse: true
 
-data_step2_3
+data_step2_3 %>% select(Cause)
 ```
 
 ### 死因の5桁コードと病名を分離して並べ替える

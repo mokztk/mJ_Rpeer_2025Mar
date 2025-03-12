@@ -3276,7 +3276,7 @@ width: 100%;
 <i class="callout-icon"></i>
 </div>
 <div class="callout-title-container flex-fill">
-Note
+e-Stat API
 </div>
 </div>
 <div class="callout-body-container callout-body">
@@ -3345,13 +3345,13 @@ Note
 <p>まだ列名を整理していないので、<code>dplyr::select()</code> で列番号を指定して 1-15列目を抽出した後で、<code>dplyr::rename_with()</code> で列名をまとめて扱いやすいよう英数字に付け直します。</p>
 <p>また、R では数字で始まる変数名は好ましくないので、各年の頭に “Death_” をつけておきます。<br>
 （後で文字列を区切るための目印です。Death@ や単に D_ などでも構いませんが、演算記号を含む Death- や +Death+ は文法上エラーになります）</p>
-<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout callout-style-default callout-important callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
 <div class="callout-title-container flex-fill">
-Tip
+Important
 </div>
 </div>
 <div class="callout-body-container callout-body">
@@ -3411,7 +3411,7 @@ Tip
 <i class="callout-icon"></i>
 </div>
 <div class="callout-title-container flex-fill">
-Note
+パイプの途中経過を確認したいとき
 </div>
 </div>
 <div class="callout-body-container callout-body">
@@ -3454,7 +3454,7 @@ Note
 <span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">Sex =</span> stringr<span class="sc">::</span><span class="fu">str_replace_all</span>(Sex, <span class="st">&quot;</span><span class="sc">\\</span><span class="st">d+&quot;</span>, <span class="st">&quot;&quot;</span>),</span>
 <span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 空になった行は NA_character_（NAの文字列型）＝空欄に置き換える</span></span>
 <span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">Sex =</span> dplyr<span class="sc">::</span><span class="fu">if_else</span>(Sex <span class="sc">==</span> <span class="st">&#39;&#39;</span>, <span class="cn">NA_character_</span>, Sex),</span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 説明陽に、性別列を死因列の次につくる（特に指定しないと末尾になる）</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 説明用に、性別列を死因列の次につくる（特に指定しないと末尾になる）</span></span>
 <span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">.after =</span> <span class="st">&quot;Cause&quot;</span></span>
 <span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>  )</span>
 <span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="do">## mutate: new variable &#39;Sex&#39; (character) with 4 unique values and 99% NA</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -3540,24 +3540,21 @@ Note
 <div class="cell">
 <details open class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>data_step2_3</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="do">## # A tibble: 420 × 16</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="do">##    Cause Sex   Death_1995 Death_2000 Death_2005 Death_2010 Death_2014 Death_2015</span></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="do">##    &lt;chr&gt; &lt;chr&gt; &lt;chr&gt;      &lt;chr&gt;      &lt;chr&gt;      &lt;chr&gt;      &lt;chr&gt;      &lt;chr&gt;     </span></span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="do">##  1 0000… 総数  922139     961653     1083796    1197014    1273025    1290510   </span></span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="do">##  2 0100… 総数  18925      19858      23538      25863      25569      25241     </span></span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="do">##  3 0110… 総数  1097       1212       1752       2313       2417       2333      </span></span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="do">##  4 0120… 総数  3178       2656       2296       2129       2100       1956      </span></span>
-<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a><span class="do">##  5 0120… 総数  2986       2461       2086       1880       1836       1723      </span></span>
-<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a><span class="do">##  6 0120… 総数  192        195        210        249        264        233       </span></span>
-<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="do">##  7 0130… 総数  4905       6216       8504       10676      11279      11357     </span></span>
-<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a><span class="do">##  8 0140… 総数  5029       5121       6042       5614       4747       4514      </span></span>
-<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a><span class="do">##  9 0140… 総数  880        885        786        539        482        407       </span></span>
-<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a><span class="do">## 10 0140… 総数  3542       3756       4855       4754       4033       3881      </span></span>
-<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a><span class="do">## # ℹ 410 more rows</span></span>
-<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a><span class="do">## # ℹ 8 more variables: Death_2016 &lt;chr&gt;, Death_2017 &lt;chr&gt;, Death_2018 &lt;chr&gt;,</span></span>
-<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a><span class="do">## #   Death_2019 &lt;chr&gt;, Death_2020 &lt;chr&gt;, Death_2021 &lt;chr&gt;, Death_2022 &lt;chr&gt;,</span></span>
-<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a><span class="do">## #   Death_2023 &lt;chr&gt;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>data_step2_3 <span class="sc">%&gt;%</span> <span class="fu">select</span>(Cause)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="do">## # A tibble: 420 × 1</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="do">##    Cause                   </span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="do">##    &lt;chr&gt;                   </span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="do">##  1 00000_死亡総数          </span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="do">##  2 01000_感染症及び寄生虫症</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="do">##  3 01100_腸管感染症        </span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="do">##  4 01200_結核              </span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a><span class="do">##  5 01201_呼吸器結核        </span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a><span class="do">##  6 01202_その他の結核      </span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="do">##  7 01300_敗血症            </span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a><span class="do">##  8 01400_ウイルス性肝炎    </span></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a><span class="do">##  9 01401_Ｂ型ウイルス性肝炎</span></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a><span class="do">## 10 01402_Ｃ型ウイルス性肝炎</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a><span class="do">## # ℹ 410 more rows</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 </section>
