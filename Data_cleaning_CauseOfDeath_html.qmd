@@ -254,6 +254,13 @@ head(data_step1)    # 内容の確認
 - 余計な空白は削除する
 - 最後に 5桁コードと病名を分離する
 
+いくつもの段階を踏むような長いパイプラインは、はじめから全部書かず1段階ずつ確認しながら書いていくことをお勧めします。\
+また、このセクションでは普段の操作で Console に出力される結果をそのまま掲載するために結果の表示の仕方を変えています。
+
+:::{.callout-note}
+既にある長いパイプラインのコードの動作を確認したいときは、`%>%` の後に `return()` 関数をつなぐことでそこまでで一旦終了としてその段階の結果を確認することが出来ます。（なお、base pipe では `|> return()` を使うことは出来ません）。
+:::
+
 :::{.callout-tip}
 ## 頻出関数 *stringr::str_replace_all(string, pattern, replacement)*
 
@@ -266,10 +273,12 @@ head(data_step1)    # 内容の確認
 
 {{< pagebreak >}}
 
-```{r parse_data2}
+### 性別列を作って分離
+
+```{r parse_data2_1}
 #| collapse: true
 
-data_step2 <- data_step1 %>% 
+data_step2_1 <- data_step1 %>% 
   # 性別列を作る
   tidylog::mutate(
     # 死因列の空白より後ろを削除すると、「総数」「男」「女」以外は空か数字のみになる
@@ -278,10 +287,40 @@ data_step2 <- data_step1 %>%
     Sex = stringr::str_replace_all(Sex, "\\d+", ""),
     # 空になった行は NA_character_（NAの文字列型）＝空欄に置き換える
     Sex = dplyr::if_else(Sex == '', NA_character_, Sex),
-  ) %>% 
+    # 説明陽に、性別列を死因列の次につくる（特に指定しないと末尾になる）
+    .after = "Cause"
+  )
+```
+
+```{r parse_data2_1res}
+#| collapse: true
+
+data_step2_1
+```
+
+```{r parse_data2_2}
+#| collapse: true
+
+data_step2_2 <- data_step2_1 %>% 
   # Sex列の空欄を下向きに埋めた後、実死亡数がない行＝もともと性別のみ書かれていた行を消す
   tidylog::fill(Sex, .direction = "down") %>% 
-  tidylog::drop_na(Death_2023) %>% 
+  tidylog::drop_na(Death_2023)
+```
+
+{{< pagebreak >}}
+
+```{r parse_data2_2res}
+#| collapse: true
+
+data_step2_2
+```
+
+### 病名（Cause）列の数字5桁コードと死因を "_" でつなぐ
+
+```{r parse_data2_3}
+#| collapse: true
+
+data_step2_3 <- data_step2_2 %>% 
   # 死因簡単分類の整理
   tidylog::mutate(
     # 空白を全部消す
@@ -290,7 +329,21 @@ data_step2 <- data_step1 %>%
     Cause = dplyr::if_else(Cause == "死亡総数",
                            "00000_死亡総数",
                            stringr::str_replace_all(Cause, "^(\\d+)", "\\1_"))
-  ) %>% 
+  )
+```
+
+```{r parse_data2_3res}
+#| collapse: true
+
+data_step2_3
+```
+
+### 死因の5桁コードと病名を分離して並べ替える
+
+```{r parse_data2_4}
+#| collapse: true
+
+data_step2_4 <- data_step2_3 %>% 
   # コードと病名を分離する
   tidylog::mutate(
     Cause_Code = stringr::str_split(Cause, "_", simplify = TRUE)[,1],
@@ -300,7 +353,49 @@ data_step2 <- data_step1 %>%
   tidylog::select(Cause_Code, Cause_Name, Sex, starts_with("Death_"))
 ```
 
-```{r pase_data2_result}
+```{r parse_data2_4res}
+#| collapse: true
+
+data_step2_4
+```
+
+{{< pagebreak >}}
+
+### まとめて処理
+
+少しずつ確認しながら進めてきた操作をひとまとめにします。（ここは `tidylog::` ではなく元の関数で示します）
+
+```{r parse_data2}
+data_step2 <- data_step1 %>% 
+  # 性別列を作る
+  dplyr::mutate(
+    # 死因列の空白より後ろを削除すると、「総数」「男」「女」以外は空か数字のみになる
+    Sex = stringr::str_replace_all(Cause, "\\s.*$", ""),
+    # 数字も削除すると、Sexは「総数」「男」「女」しか残らない
+    Sex = stringr::str_replace_all(Sex, "\\d+", ""),
+    # 空になった行は NA_character_（NAの文字列型）＝空欄に置き換える
+    Sex = dplyr::if_else(Sex == '', NA_character_, Sex),
+  ) %>% 
+  # Sex列の空欄を下向きに埋めた後、実死亡数がない行＝もともと性別のみ書かれていた行を消す
+  tidyr::fill(Sex, .direction = "down") %>% 
+  tidyr::drop_na(Death_2023) %>% 
+  # 死因簡単分類の整理
+  dplyr::mutate(
+    # 空白を全部消す
+    Cause = stringr::str_replace_all(Cause, "\\s*", ""),
+    # 死亡総数は 00000_ をつける。それ以外は先頭の連続した数字のあとに _ をつける
+    Cause = dplyr::if_else(Cause == "死亡総数",
+                           "00000_死亡総数",
+                           stringr::str_replace_all(Cause, "^(\\d+)", "\\1_"))
+  ) %>% 
+  # コードと病名を分離する
+  dplyr::mutate(
+    Cause_Code = stringr::str_split(Cause, "_", simplify = TRUE)[,1],
+    Cause_Name = stringr::str_split(Cause, "_", simplify = TRUE)[,2]
+  ) %>% 
+  # 必要な項目を並べ替え
+  dplyr::select(Cause_Code, Cause_Name, Sex, starts_with("Death_"))
+
 head(data_step2)  # 確認
 ```
 
