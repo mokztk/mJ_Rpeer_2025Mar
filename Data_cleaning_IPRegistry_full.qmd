@@ -1,0 +1,324 @@
+---
+title: |
+    Tidyverseを活用したデータ前処理の実践：中級編 \
+    -- mJOHNSNOW R解析Peer勉強会 vol.4 --
+author: "森　和貴　（静岡市立清水病院）"
+date-format: iso
+format:
+  html: 
+    fontsize: normal
+    page-layout: full
+    toc: true
+    toc-depth: 2
+    code-fold: show
+    html-math-method: katex
+    fig-format: svg
+    fig-height: 5
+    fig-width: 9
+    self-contained: true
+    number-sections: true
+    code-block-border-left: true
+    code-line-numbers: false
+    code-overflow: wrap
+    highlight-style: atom-one
+    df-print: tibble
+  typst:
+    lang: ja
+    fontsize: 11pt
+    fig-format: svg
+    fig-width: 7
+    fig-height: 3.5
+    toc: true
+    number-sections: true
+    number-depth: 3
+    section-numbering: 1-1-1.
+    columns: 1
+    papersize: a4
+    margin:
+      x: 2cm
+      y: 2cm
+    include-before-body:
+      - text: |
+          // mainfont 指定（front matter の mainfont: では複数指定できない）
+          #set text(
+            font: ("Yu Mincho", "Hiragino Mincho ProN",
+                   "Noto Serif CJK JP", "Noto Serif JP"),
+            fallback: true
+          )
+          // 見出し後は少しあける
+          #show heading: it => [
+            #pad(bottom: 10pt, left: -0.5em, it)
+          ]
+          // コードブロック内の日本語フォント、プログラミングフォント
+          #show block: it => [
+            #set text(
+              font: ("PlemolJP", "Noto Sans Mono CJK JP",
+                     "Hiragino Sans", "MS Gothic", 
+                     "Consolas", "DejaVu Sans Mono"),
+              fallback: true
+            )
+            #it
+          ]
+          // リンクは下線を引く
+          #show link: it => [
+            #set text(fill: blue)
+            #underline(it)
+          ]
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup}
+#| echo: false
+#| message: false
+
+# エラーメッセージ等の言語を日本語にする
+Sys.setenv(LANGUAGE="ja")
+
+# 使用するライブラリ
+library(tidyverse)
+library(magrittr)
+
+# 新しい機能を利用するため古いものは更新
+if (as.numeric(gsub(".\\d+$", "", packageVersion("ggsci"))) < 3.2) {
+  # ggsci::scale_colour_observable() を使用するため ver.3.2 以降が必要
+  install.packages("ggsci", repos = "https://cran.rstudio.org/")
+}
+```
+
+```{css, echo = FALSE}
+/* section number の後ろに . をつける */
+span.header-section-number:after {
+  content: ". ";
+}
+
+/* 結果の表示を線で囲む */
+div.cell-output-stdout {
+    margin-bottom: 0.5em;
+    padding: 0.5em;
+    border: solid 1px black;
+    border-radius: 4px;
+}
+
+/* 印刷用の設定 */
+@media print {
+  /* タイトル部分の余白 */
+  header#title-block-header {
+    padding-left: 2em;
+    padding-right: 2em;
+  }
+
+  /* 印刷時の表の改ページ関係 */
+  thead {
+      display: table-header-group;
+  }
+  
+  /* 印刷時にリンクの後ろにURLを付けない */
+  a[href]:after {
+    content: "";
+  }
+  
+  /* 折りたたんだ [Code] は印刷しない */
+  details.code-fold:not([open]) {
+    display: none;
+  }
+  
+  /* 水平線を表示する */
+  hr {
+    border-top: solid #888 2px;
+  }
+}
+
+```
+
+# はじめに
+
+間質性肺炎の多施設レジストリ研究をイメージした模擬データ（Excelファイル）を読み込み、一通りのデータ前処理を行って全体の生存曲線を作図するところまで行います。
+
+- n = 400
+- 観察期間は10年
+- 診断（病型）は以下の3つに簡略化
+    - IPF 　（特発性肺線維症）
+        - 特発性 （他に原因がない） 間質性肺炎の中で最多
+        - 難治性で予後不良
+        - 喫煙の影響あり、男性に多い
+    - NSIP （非特異性間質性肺炎）
+        - 治療反応性・予後などは雑多
+        - 膠原病に関連する例も多く、女性に多い
+    - COP （特発性器質化肺炎）
+        - 治療反応性良く、予後良好
+- 努力肺活量の低下、高齢、男性などが間質性肺炎における既知の予後不良因子
+- 登録時に加えて、1, 3, 5年後の経過データ
+
+一旦作成した模擬データに、あえてノイズを加えたものを配布データとしています。
+
+- 表記の揺れ
+- 不規則な欠損値
+- 入力ミスを想定した外れ値
+
+# データの読み込み
+
+配布データ「ip_registry_data.xlsx」をまずExcelで開いて、特徴を確認します。
+
+- シート1「症例登録票」
+    - 「施設ID」の形式が施設感で統一されていない
+    - 「合併症」は
+        - FileMaker からエクスポートされた複数項目が改行区切りで1セルに格納された状態
+        - 一部手入力されたセルは「、」区切りになっている
+        - 欠測が「不明」（おそらく手入力）と空欄の2種類ある
+    - そのまま R の変数として使えない % 始まりの「%DLco」
+- シート2「アウトカム」
+    - 見出しが2行構成になっており、セル結合やセル内改行が使用されている
+    - 症例の並びが登録票と違う（注：追跡調査を想定し、施設順にしてあります）
+    - 登録時と追跡調査で「KL6」 「FVC」 「FEV1」 「%DLco」がそれぞれ4回ずつ出現する
+    - 欠損値が多い
+
+## 実際の読み込み
+
+```{r read_data}
+#| collapse: true
+#| message: false
+
+# Excelファイルのシート名を確認（読み込み時は名前でもシート番号でも可）
+readxl::excel_sheets("ip_registry_data.xlsx")
+
+# シート1「症例登録票」はまずそのまま読み込む
+data_raw_sheet1 <- readxl::read_xlsx("ip_registry_data.xlsx", sheet = 1)
+
+# シート2「アウトカム」はそのまま読み込むと扱いにくい
+readxl::read_xlsx("ip_registry_data.xlsx", sheet = 2) %>% head()
+
+# 見出しの2行目がデータの1行目として読み込まれるので、すべて文字列型 <chr> になる
+# そこで、最初の2行と3行目以降に分けて読み込むことにする
+
+data_raw_sheet2_names <- readxl::read_xlsx("ip_registry_data.xlsx", sheet = 2,
+                                           n_max     = 2,         # 最初から2行を読み込む
+                                           col_names = FALSE,     # 1行目を見出しとしない
+                                           col_types = "text")    # すべて文字列で読み込む
+data_raw_sheet2_names
+
+data_raw_sheet2_body  <- readxl::read_xlsx("ip_registry_data.xlsx", sheet = 2,
+                                           skip      = 2,         # 最初の2行を読み飛ばす
+                                           col_names = FALSE)     # 1行目を見出しとしない
+data_raw_sheet2_body
+```
+
+# データ整形
+
+## データ整形の方針
+
+- 列名はRで扱いやすい英単語ベースに改名する
+- 4回登場する KL6, FVC, FEV1, %DLco は時期を区別できるよう工夫する
+- 2つのシートは「登録番号」をキーにして連結する
+- 日付データが整数値（Excelのシリアル値）になっていたら日付に再変換が必要
+- 観察期間がないので 「転帰日 – 登録日」で求める
+- 合併症は、「糖尿病」 「不整脈」 「高血圧」 それぞれの有無に分解する
+- 誤差が生じている数値は小数点以下の桁数を揃えて丸める
+- 入力間違いによる外れ値がないか確認
+
+## 列名の整理
+
+R で扱いやすいよう、英単語ベース（複数単語なら `snake_case` 方式）の変数名に改名します。
+
+4回登場する KL6, FVC, FEV1, %DLco は時期を区別できるよう後に「_(0,1,3,5)y」とつけることにします。
+
+```{r rename_data_sheet1}
+#| collapse: true
+
+# 「症例登録票」のデータ
+names(data_raw_sheet1)
+
+data_renamed_sheet1 <- data_raw_sheet1 %>% 
+  dplyr::rename_with(
+    ~ c("index", "facility", "facility_id", "date_enroll", "sex", "age_enroll",
+        "date_birth", "dx", "comobidities", 
+        "KL6_0y", "FVC_0y", "FEV1_0y", "pct_DLco_0y")
+  )
+
+names(data_renamed_sheet1)
+```
+
+```{r rename_data_sheet2}
+#| collapse: true
+
+# 「アウトカム」のデータ
+# 2行分の見出しはそのままでは見づらいのでまず転置する
+data_raw_sheet2_names %>%
+  t() %>%
+  # そのままでは列名がないため手動でつけて tibble data frame 化
+  dplyr::as_tibble(.name_repair = ~ c("period", "var"))
+
+# 改行 \r\n を削除し、periodの空欄（セル結合されていた部分）を埋める
+data_raw_sheet2_names %>%
+  t() %>%
+  dplyr::as_tibble(.name_repair = ~ c("period", "var")) %>%
+  tidyr::fill(period, .direction = "down") %>%
+  dplyr::mutate(var = str_replace_all(var, "\\r\\n", "_"))
+
+# var_period の形にして、登録番号～転帰の period 不要な部分は削除する
+data_raw_sheet2_names %>%
+  t() %>%
+  dplyr::as_tibble(.name_repair = ~ c("period", "var")) %>% 
+  tidyr::fill(period, .direction = "down") %>%
+  dplyr::mutate(
+    var   = str_replace_all(var, "\\r\\n", "_"),
+    name  = paste(var, period, sep = "_"),
+    name2 = stringr::str_replace_all(name, "_NA$", ""),
+    # あわせて、項目名の日本語部分も「症例登録票」のものに沿って修正
+    name2 = stringr::str_replace_all(name2, "年後", "y"),
+    name2 = stringr::str_replace_all(name2, "%", "pct_")
+  )
+
+# name2 で「アウトカム」データの列名を置き換える
+names_sheet2 <- data_raw_sheet2_names %>%
+  t() %>%
+  dplyr::as_tibble(.name_repair = ~ c("period", "var")) %>% 
+  tidyr::fill(period, .direction = "down") %>%
+  dplyr::mutate(
+    var   = str_replace_all(var, "\\r\\n", "_"),
+    name  = paste(var, period, sep = "_"),
+    name2 = stringr::str_replace_all(name, "_NA$", ""),
+    name2 = stringr::str_replace_all(name2, "年後", "y"),
+    name2 = stringr::str_replace_all(name2, "%", "pct_")
+  ) %>% 
+  dplyr::pull(name2)
+
+data_renamed_sheet2 <- data_raw_sheet2_body %>% 
+  dplyr::rename_with(~ names_sheet2) %>% 
+  # 日本語部分を「症例登録票」の変数名に沿って改名
+  rename(
+    index              = 登録番号,
+    facility           = 施設,
+    facility_id        = 施設ID,
+    date_outcome       = 転帰日,
+    outcome_cens0died1 = 転帰_打ち切り0死亡1
+  )
+
+names(data_renamed_sheet2)
+```
+
+## 2つのシートのデータを結合
+
+2つのデータを `dplyr::*_join()` で結合する場合、両者に共通する部分（キー）が必要です。
+
+ここでは `data_renamed_sheet1` と `data_renamed_sheet2` の行数は同じで、それぞれに含まれる症例も同じかつ各シート内で重複はないはずなので、「症例登録票」の各行に「アウトカム」の対応するデータを結合する `dplyr::left_join()` を使用します。
+
+:::{.callout-note}
+## *_join() 系の関数の種類と結合の仕方
+[Data transformation with dplyr :: CHEATSHEET](https://rstudio.github.io/cheatsheets/data-transformation.pdf) （注：リンク先はPDF）の Combine Tables - RELATIONAL DATA の項を参照。\
+基本的には `left_join()` と `select()` や `filter()` を駆使することで済むことが多いので、まずは `left_join()` に慣れてから他の join を試してみてください。
+:::
+
+```{r join_data}
+#| collapse: true
+
+# キー列を指定しない場合は、共通する列すべて（の組み合わせ）で結合される
+data_combined <- data_renamed_sheet1 %>% 
+  tidylog::left_join(data_renamed_sheet2)
+
+# 400行から増えていないので、予想外の組み合わせはないと考えられる
+```
+
+## 日付データの処理
+
+
