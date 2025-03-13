@@ -186,8 +186,10 @@ data_raw_sheet2_names <- readxl::read_xlsx("ip_registry_data.xlsx", sheet = 2,
 data_raw_sheet2_names
 
 data_raw_sheet2_body  <- readxl::read_xlsx("ip_registry_data.xlsx", sheet = 2,
-                                           skip      = 2,         # 最初の2行を読み飛ばす
-                                           col_names = FALSE)     # 1行目を見出しとしない
+                                           # 最初の2行を読み飛ばす
+                                           skip      = 2,
+                                           # 1行目を見出しとせず、A-Qの列名を使う
+                                           col_names = openxlsx::int2col(1:17))
 data_raw_sheet2_body
 ```
 
