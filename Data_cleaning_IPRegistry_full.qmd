@@ -316,7 +316,7 @@ key列を指定しない場合は共通する列すべての組み合わせが�
 data_combined <- data_renamed_sheet1 %>% 
   tidylog::left_join(
     # 重複する施設名、施設IDを削除してから結合
-    data_renamed_sheet2 %>% select(-facility, -facility_id),
+    data_renamed_sheet2 %>% dplyr::select(-facility, -facility_id),
     # index が一致するデータを結合する
     by = dplyr::join_by(index)
   )
@@ -330,20 +330,15 @@ data_combined <- data_renamed_sheet1 %>%
 #| collapse: true
 
 # 型の確認
-data_renamed_sheet1 %>% select(starts_with("date_")) %>% head(3)
-data_renamed_sheet2 %>% select(starts_with("date_")) %>% head(3)
+data_combined %>% dplyr::select(starts_with("date_")) %>% head(3)
 
 # 変換
-data_renamed_sheet1 <- data_renamed_sheet1 %>% 
+data_combined <- data_combined %>% 
   # date_ で始まる列を一括して lubridate::ymd() で日付型に変換する
   tidylog::mutate(across(starts_with("date_"), lubridate::ymd))
-data_renamed_sheet2 <- data_renamed_sheet2 %>% 
-  # sheet2はひとつだけなのでオーソドックスに
-  tidylog::mutate(date_outcome = lubridate::ymd(date_outcome))
 
 # 型の確認
-data_renamed_sheet1 %>% select(starts_with("date_")) %>% head(3)
-data_renamed_sheet2 %>% select(starts_with("date_")) %>% head(3)
+data_combined %>% dplyr::select(starts_with("date_")) %>% head(3)
 ```
 
 :::{.callout-tip}
@@ -359,7 +354,198 @@ lubridate::ymd("1899-12-30") + lubridate::period(40000, units = "days")
 
 ```{r}
 #| collapse: true
-# Sheet2 の date_outcome 冒頭3例
+# date_outcome 冒頭3例
 c(45162, 41647, 45053) %>% lubridate::as_date(origin = "1899-12-30")
 ```
 :::
+
+## 観察期間の算出
+
+配布データ「ip_registry_data.xlsx」には観察期間の変数がありません（模擬データとして作成した元データには観察期間を含めていたのですが、デモ用Excelファイルを作成する際に含め忘れました）。登録日と転帰日から観察期間 `time` を算出しておきます。今回は月単位とします。
+
+```{r followup_period}
+#| collapse: true
+
+data_with_time <- data_combined %>% 
+  dplyr::mutate(
+    # lubridate の関数を使って経過期間を月数で取得、小数点以下1桁で丸める
+    time = lubridate::interval(start = date_enroll, end = date_outcome) %>% 
+             lubridate::time_length(unit = "months") %>% 
+             round(1)
+  )
+
+data_with_time %>% dplyr::select(index, date_enroll, date_outcome, time)
+# tibble データは Console に表示するときに独特の丸めが行われる
+# View() を使えば、小数点以下の数字も省略せずに表示される
+```
+
+## 合併症の整理
+
+`comobidities` についてはセル内改行、表記の揺れなど問題が多いので一度内容を確認しておきます。
+
+また、このような場合には変換処理がうまく出来ているか確認するために、試行錯誤の段階では前例ではなく問題の大きな数例を抽出して結果を確認しながら進めた方が効率的です。そのために、それぞれの表記の代表として一番若い登録番号を確認しておきます。
+
+```{r chk_comobidities}
+#| collapse: true
+
+temp <- data_with_time %>%
+  # comobidities の内容毎に、例数と一番若い登録番号を抽出
+  dplyr::group_by(comobidities) %>%
+  dplyr::summarise(
+    cases = n(),
+    index = min(index)
+  )
+
+temp
+```
+
+合併症の種類毎に有無の変数を作成します（ここでは糖尿病、不整脈、高血圧の3つのみですが実際はもっと色々あるので主要なものについて同様の処理をすることになります）。
+
+```{r com_variables}
+#| collapse: true
+
+# まずは作業用のサブセットを作成
+data_with_time %>% 
+  tidylog::filter(index %in% temp$index) %>% 
+  tidylog::select(index, comobidities)
+
+# サブセットを使って動作検証
+data_with_time %>% 
+  dplyr::filter(index %in% temp$index) %>% 
+  dplyr::select(index, comobidities) %>% 
+  # 「不明」は欠測と同じ扱いにする
+  tidylog::mutate(
+    comobidities = stringr::str_replace_all(comobidities, "不明", NA_character_)
+  ) %>% 
+  # それぞれの病名を含んでいる場合は「あり」、含まない場合「なし」、NA は NA
+  tidylog::mutate(
+    com_diabetes     = dplyr::if_else(stringr::str_detect(comobidities, "糖尿病"), "あり", "なし"),
+    com_arrythmia    = dplyr::if_else(stringr::str_detect(comobidities, "不整脈"), "あり", "なし"),
+    com_hypertention = dplyr::if_else(stringr::str_detect(comobidities, "高血圧"), "あり", "なし")
+  )
+
+# 問題なさそうなので本番の処理
+data_separated_com <- data_with_time %>% 
+  # 「不明」は欠測と同じ扱いにする
+  tidylog::mutate(
+    comobidities = stringr::str_replace_all(comobidities, "不明", NA_character_)
+  ) %>% 
+  # それぞれの病名を含んでいる場合は「あり」、含まない場合「なし」、NA は NA
+  tidylog::mutate(
+    com_diabetes     = dplyr::if_else(stringr::str_detect(comobidities, "糖尿病"), "あり", "なし"),
+    com_arrythmia    = dplyr::if_else(stringr::str_detect(comobidities, "不整脈"), "あり", "なし"),
+    com_hypertention = dplyr::if_else(stringr::str_detect(comobidities, "高血圧"), "あり", "なし")
+  ) %>% 
+  # 元の comobidites は削除
+  tidylog::select(-comobidities)
+```
+
+## 誤差、外れ値の確認～最終データ
+
+`View(data_separated_com)` で目視確認しても良いですが、せっかくなのでRに小数点以下の桁数を数えさせてみます。
+
+```{r chk_decimal_places}
+#| collapse: true
+
+data_separated_com %>% 
+  # 数値の列を抽出
+  dplyr::select(where(is.numeric)) %>% 
+  dplyr::mutate(
+    # すべての列で小数点以下の桁数をカウント
+    across(dplyr::everything(),
+           function(x) {
+             # 数値を文字列に変換
+             x <- as.character(x)
+             # 小数点（1文字以上の数字の後に .）があればそれ以降の文字数、なければ 0
+             dplyr::if_else(stringr::str_detect(x, "\\d+\\."),
+                            stringr::str_replace(x, "\\d+\\.", "") %>% nchar(),
+                            0) %>% 
+               # 集計の都合で因子変数化
+               factor()
+           })
+  ) %>% 
+  summary()
+```
+
+冒頭あるいはスライドで Sheet2 をそのまま読み込んだ例のように、ソフト内部での小数の扱いの違いにより小数点以下10桁くらいでの誤差が生じる場合がありますが、今回はExcelでの表示通り小数点以下1～2桁で読み込めているようです。
+
+修正が必要な場合は、`dplyr::mutate()` と `round()` を組み合わせて修正しておきます。
+
+```{r}
+#| eval: false
+
+# dummy code
+data_dummy %>% mutate(some_data = round(some_data, digits = 2))
+```
+
+外れ値については、ヒストグラムを書いて不自然に離れたものがないか確認してみます。
+
+```{r chk_outlier}
+#| width: 10
+#| height: 5
+#| warning: false
+
+data_separated_com %>%
+  # 数値の列を抽出、そのうち登録番号やアウトカムは除外
+  dplyr::select(where(is.numeric)) %>%
+  dplyr::select(-c(index, facility_id, outcome_cens0died1)) %>%
+  # 縦持ちに変換
+  tidyr::pivot_longer(
+    cols      = dplyr::everything(),
+    names_to  = "var",
+    values_to = "value"
+  ) %>%
+  # まとめてヒストグラム
+  ggplot2::ggplot(aes(x = value)) +
+    ggplot2::geom_histogram(bins = 20) +
+    # 外れ値を探すため、count が 0 - 10 の小さいところを拡大
+    ggplot2::coord_cartesian(ylim = c(0, 10)) +
+    # ひとまとめに表示。X軸は変動
+    ggplot2::facet_wrap(~ var, ncol = 5, scales = "free_x") +
+    # X軸タイトルは非表示
+    ggplot2::labs(x = NULL)
+```
+
+`FEV1_1y`, `FEV1_5y`, `FVC_0y`, `FVC_3y` に明らかに桁が違う値があることがわかります。
+
+実は、これらは呼吸機能検査の結果でリットル単位のところ、**小数点を入力し忘れて100倍になってしまったエラー** を模して意図的に入れたものです。この様にわかりやすく想定される修正をして違和感のない値になるものは良いですが、実際は試験事務局や参加施設に確認が必要な地道な作業になります。
+
+外れ値を直しつつ、解析に不要な変数を除外して最終のデータセットを作ります。
+
+```{r data_work}
+#| collapse: true
+
+# 外れ値の確認
+data_separated_com %>%
+  dplyr::select(index, FEV1_1y, FEV1_5y, FVC_0y, FVC_3y) %>%
+  dplyr::filter(FEV1_1y > 100 | FEV1_5y > 100 | FVC_0y > 100 | FVC_3y > 100)
+
+# 解析用データセット
+data_work <- data_separated_com %>%
+  tidylog::mutate(
+    # 該当項目で 100より大きな値を 1/100 する
+    across(c(FEV1_1y, FEV1_5y, FVC_0y, FVC_3y),
+           function(x) dplyr::if_else(x > 100, x / 100, x))
+  ) %>%
+  # 必要な項目のみ、並べ替える
+  tidylog::select(
+    index, facility, sex, age_enroll, dx, time, outcome_cens0died1,
+    com_diabetes, com_arrythmia, com_hypertention,
+    KL6_0y, FVC_0y, FEV1_0y, pct_DLco_0y, KL6_1y, FVC_1y, FEV1_1y, pct_DLco_1y,
+    KL6_3y, FVC_3y, FEV1_3y, pct_DLco_3y, KL6_5y, FVC_5y, FEV1_5y, pct_DLco_5y
+  ) %>% 
+  # outcomeは 0 / 1 の因子型にしておく
+  tidylog::mutate(outcome_cens0died1 = factor(outcome_cens0died1))
+  
+names(data_work)
+
+# 修正の確認  
+data_work %>% 
+  dplyr::select(index, FEV1_1y, FEV1_5y, FVC_0y, FVC_3y) %>%
+  # 上で確認した index のデータのみ
+  dplyr::filter(index %in% c(16, 85, 125, 160, 194, 200, 249, 265, 365))
+```
+
+
+
+
