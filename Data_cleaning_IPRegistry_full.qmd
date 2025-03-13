@@ -299,26 +299,67 @@ names(data_renamed_sheet2)
 
 ## 2つのシートのデータを結合
 
-2つのデータを `dplyr::*_join()` で結合する場合、両者に共通する部分（キー）が必要です。
+2つのデータを `dplyr::*_join()` で結合する場合、両者に共通する部分（key）が必要です。\
+key列を指定しない場合は共通する列すべての組み合わせが一致するものが結合されますが、今回は登録番号（`index`）のみで結合するために `data_renamed_sheet2` 側の `facility`, `facility_id` を削除してから処理します（key列は必要最小限の方が良いですが、key列以外の両者に共通する名前の列には `.x`, `.y` などの識別子（suffix）が付加されます）。
 
-ここでは `data_renamed_sheet1` と `data_renamed_sheet2` の行数は同じで、それぞれに含まれる症例も同じかつ各シート内で重複はないはずなので、「症例登録票」の各行に「アウトカム」の対応するデータを結合する `dplyr::left_join()` を使用します。
+ここでは `data_renamed_sheet1` と `data_renamed_sheet2` の行数は同じで、それぞれに含まれる症例も同じかつ各シート内で重複はないはずなので、「症例登録票」（左側）の各行に「アウトカム」（右側）の対応するデータを結合する `dplyr::left_join()` を使用します。
 
 :::{.callout-note}
 ## *_join() 系の関数の種類と結合の仕方
-[Data transformation with dplyr :: CHEATSHEET](https://rstudio.github.io/cheatsheets/data-transformation.pdf) （注：リンク先はPDF）の Combine Tables - RELATIONAL DATA の項を参照。\
-基本的には `left_join()` と `select()` や `filter()` を駆使することで済むことが多いので、まずは `left_join()` に慣れてから他の join を試してみてください。
+[Data transformation with dplyr :: CHEATSHEET](https://rstudio.github.io/cheatsheets/data-transformation.pdf) （注：リンク先はPDF）の Combine Tables - RELATIONAL DATA の項を参照してください。\
+基本的には `left_join()` と `select()` や `filter()` を駆使することで何とかなることが多いので、まずは `left_join()` に慣れてから他の join を試すのが良いと思います。
 :::
 
 ```{r join_data}
 #| collapse: true
 
-# キー列を指定しない場合は、共通する列すべて（の組み合わせ）で結合される
 data_combined <- data_renamed_sheet1 %>% 
-  tidylog::left_join(data_renamed_sheet2)
-
-# 400行から増えていないので、予想外の組み合わせはないと考えられる
+  tidylog::left_join(
+    # 重複する施設名、施設IDを削除してから結合
+    data_renamed_sheet2 %>% select(-facility, -facility_id),
+    # index が一致するデータを結合する
+    by = dplyr::join_by(index)
+  )
 ```
 
 ## 日付データの処理
 
+今回は読み込んだ際に &lt;dttm&gt; すなわち lubridate パッケージで使用される **date-time** 型（日時型）として概ね適切に読み込まれています。ただ、時刻の情報は不要なので **date** 型に変換しておきます。
 
+```{r fix_type_date}
+#| collapse: true
+
+# 型の確認
+data_renamed_sheet1 %>% select(starts_with("date_")) %>% head(3)
+data_renamed_sheet2 %>% select(starts_with("date_")) %>% head(3)
+
+# 変換
+data_renamed_sheet1 <- data_renamed_sheet1 %>% 
+  # date_ で始まる列を一括して lubridate::ymd() で日付型に変換する
+  tidylog::mutate(across(starts_with("date_"), lubridate::ymd))
+data_renamed_sheet2 <- data_renamed_sheet2 %>% 
+  # sheet2はひとつだけなのでオーソドックスに
+  tidylog::mutate(date_outcome = lubridate::ymd(date_outcome))
+
+# 型の確認
+data_renamed_sheet1 %>% select(starts_with("date_")) %>% head(3)
+data_renamed_sheet2 %>% select(starts_with("date_")) %>% head(3)
+```
+
+:::{.callout-tip}
+## 日付がシリアル値で読み込まれたとき
+冒頭で Sheet2 をそのまま読み込んだ例のように、Excelで日付だったデータが 40000前後の整数として読み込まれてしまうことがあります。これは**シリアル値**といって、[「1900-01-01 を起点とした経過日数」と定義される値]{style="text-decoration:underline"}ですが、Excelでは開発当時の主流であった表計算ソフト Lotus1-2-3 の【うるう年バグ】にあわせて **実際は「1899-12-30を起点とした経過日数」** になっているのでマニュアルを真に受けると2日のズレが生じます（調べれば出てくるのですが、定義と実装が違うのは困りものです）。
+
+```{r}
+#| collapse: true
+lubridate::ymd("1899-12-30") + lubridate::period(40000, units = "days")
+```
+
+さらに、mac版のExcelでは条件により「1904-01-01を起点とした経過日数」の場合があります。変換は以下のように `lubridate::as_date()` に `origin` を指定することでできますが、必ず元のExcelファイルと照合・確認するようにしてください。
+
+```{r}
+#| collapse: true
+# Sheet2 の date_outcome 冒頭3例
+c(45162, 41647, 45053) %>% lubridate::as_date(origin = "1899-12-30")
+```
+:::
