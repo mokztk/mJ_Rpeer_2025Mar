@@ -1,0 +1,557 @@
+---
+title: |
+    Tidyverseを活用したデータ前処理の実践：中級編 \
+    -- mJOHNSNOW R解析Peer勉強会 vol.4 --
+author: "森　和貴　（静岡市立清水病院）"
+date-format: iso
+format:
+  html: 
+    fontsize: normal
+    page-layout: full
+    toc: true
+    toc-depth: 2
+    code-fold: show
+    html-math-method: katex
+    fig-format: svg
+    fig-height: 4
+    fig-width: 7
+    self-contained: true
+    number-sections: true
+    code-block-border-left: true
+    code-line-numbers: false
+    code-overflow: wrap
+    highlight-style: atom-one
+    df-print: tibble
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup}
+#| echo: false
+#| message: false
+
+# エラーメッセージ等の言語を日本語にする
+Sys.setenv(LANGUAGE="ja")
+
+# 使用するライブラリ
+library(tidyverse)
+library(magrittr)
+library(survival)
+library(survminer)
+
+# 新しい機能を利用するため古いものは更新
+if (as.numeric(gsub(".\\d+$", "", packageVersion("ggsci"))) < 3.2) {
+  # ggsci::scale_colour_observable() を使用するため ver.3.2 以降が必要
+  install.packages("ggsci", repos = "https://cran.rstudio.org/")
+}
+```
+
+```{css, echo = FALSE}
+/* section number の後ろに . をつける */
+span.header-section-number:after {
+  content: ". ";
+}
+
+/* 結果の表示を線で囲む */
+div.cell-output-stdout {
+    margin-bottom: 0.5em;
+    padding: 0.5em;
+    border: solid 1px black;
+    border-radius: 4px;
+}
+
+/* 印刷用の設定 */
+@media print {
+  /* タイトル部分の余白 */
+  header#title-block-header {
+    padding-left: 2em;
+    padding-right: 2em;
+  }
+
+  /* 印刷時の表の改ページ関係 */
+  thead {
+      display: table-header-group;
+  }
+  
+  /* 印刷時にリンクの後ろにURLを付けない */
+  a[href]:after {
+    content: "";
+  }
+  
+  /* 折りたたんだ [Code] は印刷しない */
+  details.code-fold:not([open]) {
+    display: none;
+  }
+  
+  /* 水平線を表示する */
+  hr {
+    border-top: solid #888 2px;
+  }
+}
+
+```
+
+# はじめに
+
+間質性肺炎の多施設レジストリ研究をイメージした模擬データ（Excelファイル）を読み込み、一通りのデータ前処理を行って全体の生存曲線を作図するところまで行います。
+
+- n = 400
+- 観察期間は10年
+- 登録時に加えて、1, 3, 5年後の経過データ
+
+一旦作成した模擬データに、あえてノイズを加えたものを配布データとしています。
+
+# データの読み込み
+
+配布データ「ip_registry_data.xlsx」をまずExcelで開いて、特徴を確認します。
+
+- シート1「症例登録票」
+    - 「施設ID」の形式が施設間で統一されていない
+    - 「合併症」は
+        - FileMaker からエクスポートされた複数項目が改行区切りで1セルに格納された状態
+        - 一部手入力されたセルは「、」区切りになっている
+        - 欠測が「不明」（おそらく手入力）と空欄の2種類ある
+    - そのまま R の変数として使えない % 始まりの「%DLco」
+- シート2「アウトカム」
+    - 見出しが2行構成になっており、セル結合やセル内改行が使用されている
+    - 症例の並びが登録票と違う（注：追跡調査を想定し、施設順にしてあります）
+    - 登録時と追跡調査で「KL6」 「FVC」 「FEV1」 「%DLco」がそれぞれ4回ずつ出現する
+
+{{< pagebreak >}}
+
+## 実際の読み込み
+
+```{r read_data}
+#| collapse: true
+#| message: false
+
+# Excelファイルのシート名を確認（読み込み時は名前でもシート番号でも可）
+readxl::excel_sheets("ip_registry_data.xlsx")
+
+# シート1「症例登録票」はまずそのまま読み込む
+data_raw_sheet1 <- readxl::read_xlsx("ip_registry_data.xlsx", sheet = 1)
+
+# シート2「アウトカム」はそのまま読み込むと扱いにくい
+readxl::read_xlsx("ip_registry_data.xlsx", sheet = 2) %>% head()
+
+# 見出しの2行目がデータの1行目として読み込まれるので、すべて文字列型 <chr> になる
+# そこで、最初の2行と3行目以降に分けて読み込むことにする
+
+data_raw_sheet2_names <- readxl::read_xlsx("ip_registry_data.xlsx", sheet = 2,
+                                           n_max     = 2,         # 最初から2行を読み込む
+                                           col_names = FALSE,     # 1行目を見出しとしない
+                                           col_types = "text")    # すべて文字列で読み込む
+data_raw_sheet2_names
+
+data_raw_sheet2_body  <- readxl::read_xlsx("ip_registry_data.xlsx", sheet = 2,
+                                           skip      = 2,         # 最初の2行を読み飛ばす
+                                           col_names = FALSE)     # 1行目を見出しとしない
+data_raw_sheet2_body
+```
+
+# データ整形
+
+## データ整形の方針
+
+- 列名はRで扱いやすい英単語ベースに改名する
+- 4回登場する KL6, FVC, FEV1, %DLco は時期を区別できるよう工夫する
+- 2つのシートは「登録番号」をキーにして連結する
+- 日付データが整数値（Excelのシリアル値）になっていたら日付に再変換が必要
+- 観察期間がないので 「転帰日 – 登録日」で求める
+- 合併症は、「糖尿病」 「不整脈」 「高血圧」 それぞれの有無に分解する
+- 誤差が生じている数値は小数点以下の桁数を揃えて丸める
+- 入力間違いによる外れ値がないか確認
+
+## 列名の整理
+
+R で扱いやすいよう、英単語ベース（複数単語なら `snake_case` 方式）の変数名に改名します。
+
+4回登場する KL6, FVC, FEV1, %DLco は時期を区別できるよう後に「_(0,1,3,5)y」とつけることにします。
+
+```{r rename_data_sheet1}
+#| collapse: true
+
+# 「症例登録票」のデータ
+names(data_raw_sheet1)
+
+data_renamed_sheet1 <- data_raw_sheet1 %>% 
+  dplyr::rename_with(
+    ~ c("index", "facility", "facility_id", "date_enroll", "sex", "age_enroll",
+        "date_birth", "dx", "comobidities", 
+        "KL6_0y", "FVC_0y", "FEV1_0y", "pct_DLco_0y")
+  )
+
+names(data_renamed_sheet1)
+```
+
+{{< pagebreak >}}
+
+```{r rename_data_sheet2}
+#| collapse: true
+
+# 「アウトカム」のデータ
+# 2行分の見出しはそのままでは見づらいのでまず転置する
+data_raw_sheet2_names %>%
+  t() %>%
+  # そのままでは列名がないため手動でつけて tibble data frame 化
+  dplyr::as_tibble(.name_repair = ~ c("period", "var"))
+
+# 改行 \r\n を削除し、periodの空欄（セル結合されていた部分）を埋める
+data_raw_sheet2_names %>%
+  t() %>%
+  dplyr::as_tibble(.name_repair = ~ c("period", "var")) %>%
+  tidyr::fill(period, .direction = "down") %>%
+  dplyr::mutate(var = str_replace_all(var, "\\r\\n", "_"))
+
+# var_period の形にして、登録番号～転帰の period 不要な部分は削除する
+data_raw_sheet2_names %>%
+  t() %>%
+  dplyr::as_tibble(.name_repair = ~ c("period", "var")) %>% 
+  tidyr::fill(period, .direction = "down") %>%
+  dplyr::mutate(
+    var   = str_replace_all(var, "\\r\\n", "_"),
+    name  = paste(var, period, sep = "_"),
+    name2 = stringr::str_replace_all(name, "_NA$", ""),
+    # あわせて、項目名の日本語部分も「症例登録票」のものに沿って修正
+    name2 = stringr::str_replace_all(name2, "年後", "y"),
+    name2 = stringr::str_replace_all(name2, "%", "pct_")
+  )
+
+# name2 で「アウトカム」データの列名を置き換える
+names_sheet2 <- data_raw_sheet2_names %>%
+  t() %>%
+  dplyr::as_tibble(.name_repair = ~ c("period", "var")) %>% 
+  tidyr::fill(period, .direction = "down") %>%
+  dplyr::mutate(
+    var   = str_replace_all(var, "\\r\\n", "_"),
+    name  = paste(var, period, sep = "_"),
+    name2 = stringr::str_replace_all(name, "_NA$", ""),
+    name2 = stringr::str_replace_all(name2, "年後", "y"),
+    name2 = stringr::str_replace_all(name2, "%", "pct_")
+  ) %>% 
+  dplyr::pull(name2)
+
+data_renamed_sheet2 <- data_raw_sheet2_body %>% 
+  dplyr::rename_with(~ names_sheet2) %>% 
+  # 日本語部分を「症例登録票」の変数名に沿って改名
+  rename(
+    index              = 登録番号,
+    facility           = 施設,
+    facility_id        = 施設ID,
+    date_outcome       = 転帰日,
+    outcome_cens0died1 = 転帰_打ち切り0死亡1
+  )
+
+names(data_renamed_sheet2)
+```
+
+## 2つのシートのデータを結合
+
+2つのデータを `dplyr::*_join()` で結合する場合、両者に共通する部分（key）が必要です。\
+key列を指定しない場合は共通する列すべての組み合わせが一致するものが結合されますが、今回は登録番号（`index`）のみで結合するために `data_renamed_sheet2` 側の `facility`, `facility_id` を削除してから処理します（key列は必要最小限の方が良いですが、key列以外の両者に共通する名前の列には `.x`, `.y` などの識別子（suffix）が付加されます）。
+
+ここでは `data_renamed_sheet1` と `data_renamed_sheet2` の行数は同じで、それぞれに含まれる症例も同じかつ各シート内で重複はないはずなので、「症例登録票」（左側）の各行に「アウトカム」（右側）の対応するデータを結合する `dplyr::left_join()` を使用します。
+
+:::{.callout-note}
+## *_join() 系の関数の種類と結合の仕方
+[Data transformation with dplyr :: CHEATSHEET](https://rstudio.github.io/cheatsheets/data-transformation.pdf) （注：リンク先はPDF）の Combine Tables - RELATIONAL DATA の項を参照してください。\
+基本的には `left_join()` と `select()` や `filter()` を駆使することで何とかなることが多いので、まずは `left_join()` に慣れてから他の join を試すのが良いと思います。
+:::
+
+```{r join_data}
+#| collapse: true
+
+data_combined <- data_renamed_sheet1 %>% 
+  tidylog::left_join(
+    # 重複する施設名、施設IDを削除してから結合
+    data_renamed_sheet2 %>% dplyr::select(-facility, -facility_id),
+    # index が一致するデータを結合する
+    by = dplyr::join_by(index)
+  )
+```
+
+{{< pagebreak >}}
+
+## 日付データの処理
+
+今回は読み込んだ際に &lt;dttm&gt; すなわち lubridate パッケージで使用される **date-time** 型（日時型）として概ね適切に読み込まれています。ただ、時刻の情報は不要なので **date** 型に変換しておきます。
+
+```{r fix_type_date}
+#| collapse: true
+
+# 型の確認
+data_combined %>% dplyr::select(starts_with("date_")) %>% head(3)
+
+# 変換
+data_combined <- data_combined %>% 
+  # date_ で始まる列を一括して lubridate::ymd() で日付型に変換する
+  tidylog::mutate(across(starts_with("date_"), lubridate::ymd))
+
+# 型の確認
+data_combined %>% dplyr::select(starts_with("date_")) %>% head(3)
+```
+
+:::{.callout-tip}
+## 日付がシリアル値で読み込まれたとき
+冒頭で Sheet2 をそのまま読み込んだ例のように、Excelで日付だったデータが 40000前後の整数として読み込まれてしまうことがあります。これは**シリアル値**といって、[「1900-01-01 を起点とした経過日数」と定義される値]{style="text-decoration:underline"}ですが、Excelでは開発当時の主流であった表計算ソフト Lotus1-2-3 の【うるう年バグ】にあわせて **実際は「1899-12-30を起点とした経過日数」** になっているのでマニュアルを真に受けると2日のズレが生じます（調べれば出てくるのですが、定義と実装が違うのは困りものです）。
+
+```{r}
+#| collapse: true
+lubridate::ymd("1899-12-30") + lubridate::period(40000, units = "days")
+```
+
+さらに、mac版のExcelでは条件により「1904-01-01を起点とした経過日数」の場合があります。変換は以下のように `lubridate::as_date()` に `origin` を指定することでできますが、必ず元のExcelファイルと照合・確認するようにしてください。
+
+```{r}
+#| collapse: true
+# date_outcome 冒頭3例
+c(45162, 41647, 45053) %>% lubridate::as_date(origin = "1899-12-30")
+```
+:::
+
+## 観察期間の算出
+
+配布データ「ip_registry_data.xlsx」には観察期間の変数がありません（模擬データとして作成した元データには観察期間を含めていたのですが、デモ用Excelファイルを作成する際に含め忘れました）。登録日と転帰日から観察期間 `time` を算出しておきます。今回は月単位とします。
+
+```{r followup_period}
+#| collapse: true
+
+data_with_time <- data_combined %>% 
+  dplyr::mutate(
+    # lubridate の関数を使って経過期間を月数で取得、小数点以下1桁で丸める
+    time = lubridate::interval(start = date_enroll, end = date_outcome) %>% 
+             lubridate::time_length(unit = "months") %>% 
+             round(1)
+  )
+
+data_with_time %>% dplyr::select(index, date_enroll, date_outcome, time)
+# tibble データは Console に表示するときに独特の丸めが行われる
+# View() を使えば、小数点以下の数字も省略せずに表示される
+```
+
+{{< pagebreak >}}
+
+## 合併症の整理
+
+`comobidities` についてはセル内改行、表記の揺れなど問題が多いので一度内容を確認しておきます。
+
+また、このような場合には変換処理がうまく出来ているか確認するために、試行錯誤の段階では全例ではなく問題の大きな数例を抽出して結果を確認しながら進めた方が効率的です。そのために、それぞれの表記の代表として一番若い登録番号を確認しておきます。
+
+```{r chk_comobidities}
+#| collapse: true
+
+temp <- data_with_time %>%
+  # comobidities の内容毎に、例数と一番若い登録番号を抽出
+  dplyr::group_by(comobidities) %>%
+  dplyr::summarise(
+    cases = n(),
+    index = min(index)
+  )
+
+temp
+```
+
+合併症の種類毎に有無の変数を作成します（ここでは糖尿病、不整脈、高血圧の3つのみですが実際はもっと色々あるので主要なものについて同様の処理をすることになります）。
+
+{{< pagebreak >}}
+
+```{r com_variables}
+#| collapse: true
+
+# まずは作業用のサブセットを作成
+data_with_time %>% 
+  tidylog::filter(index %in% temp$index) %>% 
+  tidylog::select(index, comobidities)
+
+# サブセットを使って動作検証
+data_with_time %>% 
+  dplyr::filter(index %in% temp$index) %>% 
+  dplyr::select(index, comobidities) %>% 
+  # 「不明」は欠測と同じ扱いにする
+  tidylog::mutate(
+    comobidities = stringr::str_replace_all(comobidities, "不明", NA_character_)
+  ) %>% 
+  # それぞれの病名を含んでいる場合は「あり」、含まない場合「なし」、NA は NA
+  tidylog::mutate(
+    com_diabetes     = dplyr::if_else(stringr::str_detect(comobidities, "糖尿病"), "あり", "なし"),
+    com_arrythmia    = dplyr::if_else(stringr::str_detect(comobidities, "不整脈"), "あり", "なし"),
+    com_hypertention = dplyr::if_else(stringr::str_detect(comobidities, "高血圧"), "あり", "なし")
+  )
+
+# 問題なさそうなので本番の処理
+data_separated_com <- data_with_time %>% 
+  # 「不明」は欠測と同じ扱いにする
+  tidylog::mutate(
+    comobidities = stringr::str_replace_all(comobidities, "不明", NA_character_)
+  ) %>% 
+  # それぞれの病名を含んでいる場合は「あり」、含まない場合「なし」、NA は NA
+  tidylog::mutate(
+    com_diabetes     = dplyr::if_else(stringr::str_detect(comobidities, "糖尿病"), "あり", "なし"),
+    com_arrythmia    = dplyr::if_else(stringr::str_detect(comobidities, "不整脈"), "あり", "なし"),
+    com_hypertention = dplyr::if_else(stringr::str_detect(comobidities, "高血圧"), "あり", "なし")
+  ) %>% 
+  # 元の comobidites は削除
+  tidylog::select(-comobidities)
+```
+
+{{< pagebreak >}}
+
+## 誤差、外れ値の確認～最終データ
+
+`View(data_separated_com)` で目視確認しても良いですが、せっかくなのでRに小数点以下の桁数を数えさせてみます。
+
+```{r chk_decimal_places}
+#| collapse: true
+
+data_separated_com %>% 
+  # 数値の列を抽出
+  dplyr::select(where(is.numeric)) %>% 
+  dplyr::mutate(
+    # すべての列で小数点以下の桁数をカウント
+    across(dplyr::everything(),
+           function(x) {
+             # 数値を文字列に変換
+             x <- as.character(x)
+             # 小数点（1文字以上の数字の後に .）があればそれ以降の文字数、なければ 0
+             dplyr::if_else(stringr::str_detect(x, "\\d+\\."),
+                            stringr::str_replace(x, "\\d+\\.", "") %>% nchar(),
+                            0) %>% 
+               # 集計の都合で因子変数化
+               factor()
+           })
+  ) %>% 
+  summary()
+```
+
+冒頭あるいはスライドで Sheet2 をそのまま読み込んだ例のように、ソフト内部での小数の扱いの違いにより小数点以下10桁くらいでの誤差が生じる場合がありますが、今回はExcelでの表示通り小数点以下1～2桁で読み込めているようです。
+
+修正が必要な場合は、`dplyr::mutate()` と `round()` を組み合わせて修正しておきます。
+
+```{r}
+#| eval: false
+
+# dummy code
+data_dummy %>% mutate(some_data = round(some_data, digits = 2))
+```
+
+外れ値については、ヒストグラムを書いて不自然に離れたものがないか確認してみます。
+
+```{r chk_outlier}
+#| warning: false
+
+data_separated_com %>%
+  # 数値の列を抽出、そのうち登録番号やアウトカムは除外
+  dplyr::select(where(is.numeric)) %>%
+  dplyr::select(-c(index, facility_id, outcome_cens0died1)) %>%
+  # 縦持ちに変換
+  tidyr::pivot_longer(
+    cols      = dplyr::everything(),
+    names_to  = "var",
+    values_to = "value"
+  ) %>%
+  # まとめてヒストグラム
+  ggplot2::ggplot(aes(x = value)) +
+    ggplot2::geom_histogram(bins = 20) +
+    # 外れ値を探すため、count が 0 - 10 の小さいところを拡大
+    ggplot2::coord_cartesian(ylim = c(0, 10)) +
+    # ひとまとめに表示。X軸は変動
+    ggplot2::facet_wrap(~ var, ncol = 5, scales = "free_x") +
+    # X軸タイトルは非表示
+    ggplot2::labs(x = NULL)
+```
+
+`FEV1_1y`, `FEV1_5y`, `FVC_0y`, `FVC_3y` に明らかに桁が違う値があることがわかります。
+
+実は、これらは呼吸機能検査の結果でリットル単位のところ、**小数点を入力し忘れて100倍になってしまったエラー** を模して意図的に入れたものです。この様にわかりやすく想定される修正をして違和感のない値になるものは良いですが、実際は試験事務局や参加施設に確認が必要な地道な作業になります。
+
+外れ値を直しつつ、解析に不要な変数を除外して最終のデータセットを作ります。
+
+```{r data_work}
+#| collapse: true
+
+# 外れ値の確認
+data_separated_com %>%
+  dplyr::select(index, FEV1_1y, FEV1_5y, FVC_0y, FVC_3y) %>%
+  dplyr::filter(FEV1_1y > 100 | FEV1_5y > 100 | FVC_0y > 100 | FVC_3y > 100)
+
+# 解析用データセット
+data_work <- data_separated_com %>%
+  tidylog::mutate(
+    # 該当項目で 100より大きな値を 1/100 する
+    across(c(FEV1_1y, FEV1_5y, FVC_0y, FVC_3y),
+           function(x) dplyr::if_else(x > 100, x / 100, x))
+  ) %>%
+  # 必要な項目のみ、並べ替える
+  tidylog::select(
+    index, facility, sex, age_enroll, dx, time, outcome_cens0died1,
+    com_diabetes, com_arrythmia, com_hypertention,
+    KL6_0y, FVC_0y, FEV1_0y, pct_DLco_0y, KL6_1y, FVC_1y, FEV1_1y, pct_DLco_1y,
+    KL6_3y, FVC_3y, FEV1_3y, pct_DLco_3y, KL6_5y, FVC_5y, FEV1_5y, pct_DLco_5y
+  ) %>% 
+  # outcomeは 0 / 1 の因子型にしておく
+  tidylog::mutate(outcome_cens0died1 = factor(outcome_cens0died1))
+  
+# 修正の確認  
+data_work %>% 
+  dplyr::select(index, FEV1_1y, FEV1_5y, FVC_0y, FVC_3y) %>%
+  # 上で確認した index のデータのみ
+  dplyr::filter(index %in% c(16, 85, 125, 160, 194, 200, 249, 265, 365))
+```
+
+{{< pagebreak >}}
+
+# 解析例
+
+出来上がった `data_work` を使っていくつかの解析を試します。
+
+## 生存曲線
+
+```{r survival_curve}
+#| message: false
+
+library(survival)
+library(survminer)
+
+survival::survfit(survival::Surv(time, outcome_cens0died1 == 1) ~ dx, data = data_work) %>%
+  survminer::ggsurvplot(
+    conf.int      = TRUE,
+    risk.table    = TRUE,
+    tables.height = 0.3,
+    ggtheme       = survminer::theme_survminer(base_size = 14),
+    tables.theme  = survminer::theme_cleantable(base_size = 12),
+    surv.scale    = "percent", 
+    break.time.by = 12,
+    xlab          = "Observation time (mo)",
+    legend        = "none"
+  )
+```
+
+{{< pagebreak >}}
+
+## 多変量Cox比例ハザート回帰
+
+```{r cox_table}
+data_work %>% 
+  # FVC変化量（既知の予後因子）をつくる
+  dplyr::mutate(delta_FVC_1y = FVC_1y - FVC_0y) %>% 
+  # Cox比例ハザートモデル
+  survival::coxph(survival::Surv(time, outcome_cens0died1 == 1) ~
+                    dx + sex + age_enroll + delta_FVC_1y,
+                  data = .) %>%
+  # 結果の表
+  gtsummary::tbl_regression(
+    exponentiate = TRUE,
+    conf.level   = 0.95
+  ) %>% 
+  # p値に * をつける
+  gtsummary::add_significance_stars(
+    pattern = "{p.value} {stars}",
+    hide_ci = FALSE,
+    hide_se = TRUE,
+    hide_p  = FALSE
+  ) %>% 
+  # 出力方法によっては * が Markdown として処理されてしまうため表示を変更
+  gtsummary::modify_footnote(
+    p.value ~ "p-values; \\* p < 0.05, \\*\\* p < 0.01, \\*\\*\\* p < 0.001"
+  )
+```
