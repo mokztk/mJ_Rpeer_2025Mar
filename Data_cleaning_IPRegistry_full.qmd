@@ -26,8 +26,8 @@ format:
     lang: ja
     fontsize: 11pt
     fig-format: svg
-    fig-width: 7
-    fig-height: 3.5
+    fig-width: 8
+    fig-height: 5
     toc: true
     number-sections: true
     number-depth: 3
@@ -78,6 +78,8 @@ Sys.setenv(LANGUAGE="ja")
 # 使用するライブラリ
 library(tidyverse)
 library(magrittr)
+library(survival)
+library(survminer)
 
 # 新しい機能を利用するため古いものは更新
 if (as.numeric(gsub(".\\d+$", "", packageVersion("ggsci"))) < 3.2) {
@@ -156,7 +158,6 @@ div.cell-output-stdout {
     - 見出しが2行構成になっており、セル結合やセル内改行が使用されている
     - 症例の並びが登録票と違う（注：追跡調査を想定し、施設順にしてあります）
     - 登録時と追跡調査で「KL6」 「FVC」 「FEV1」 「%DLco」がそれぞれ4回ずつ出現する
-    - 欠損値が多い
 
 {{< pagebreak >}}
 
@@ -474,8 +475,8 @@ data_dummy %>% mutate(some_data = round(some_data, digits = 2))
 外れ値については、ヒストグラムを書いて不自然に離れたものがないか確認してみます。
 
 ```{r chk_outlier}
-#| width: 10
-#| height: 5
+#| fig-width: 9
+#| fig-height: 5
 #| warning: false
 
 data_separated_com %>%
@@ -537,5 +538,63 @@ data_work %>%
   dplyr::select(index, FEV1_1y, FEV1_5y, FVC_0y, FVC_3y) %>%
   # 上で確認した index のデータのみ
   dplyr::filter(index %in% c(16, 85, 125, 160, 194, 200, 249, 265, 365))
+```
+
+{{< pagebreak >}}
+
+# 解析例
+
+出来上がった `data_work` を使っていくつかの解析を試します。
+
+## 生存曲線
+
+```{r survival_curve}
+#| message: false
+
+library(survival)
+library(survminer)
+
+survival::survfit(survival::Surv(time, outcome_cens0died1 == 1) ~ dx, data = data_work) %>%
+  survminer::ggsurvplot(
+    conf.int      = TRUE,
+    risk.table    = TRUE,
+    tables.height = 0.3,
+    ggtheme       = survminer::theme_survminer(base_size = 14),
+    tables.theme  = survminer::theme_cleantable(base_size = 12),
+    surv.scale    = "percent", 
+    break.time.by = 12,
+    xlab          = "Observation time (mo)",
+    legend        = "none"
+  )
+```
+
+{{< pagebreak >}}
+
+## 多変量Cox比例ハザート回帰
+
+```{r cox_table}
+data_work %>% 
+  # FVC変化量（既知の予後因子）をつくる
+  dplyr::mutate(delta_FVC_1y = FVC_1y - FVC_0y) %>% 
+  # Cox比例ハザートモデル
+  survival::coxph(survival::Surv(time, outcome_cens0died1 == 1) ~
+                    dx + sex + age_enroll + delta_FVC_1y,
+                  data = .) %>%
+  # 結果の表
+  gtsummary::tbl_regression(
+    exponentiate = TRUE,
+    conf.level   = 0.95
+  ) %>% 
+  # p値に * をつける
+  gtsummary::add_significance_stars(
+    pattern = "{p.value} {stars}",
+    hide_ci = FALSE,
+    hide_se = TRUE,
+    hide_p  = FALSE
+  ) %>% 
+  # 出力方法によっては * が Markdown として処理されてしまうため表示を変更
+  gtsummary::modify_footnote(
+    p.value ~ "p-values; \\* p < 0.05, \\*\\* p < 0.01, \\*\\*\\* p < 0.001"
+  )
 ```
 
