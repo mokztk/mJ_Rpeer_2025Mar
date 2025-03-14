@@ -1,7 +1,117 @@
 ---
-title: "mJ peerR vol.4"
+title: "mJOHNSNOW R解析Peer勉強会 vol.4"
+author: "森　和貴　（静岡市立清水病院）"
+date: 2025-03-20
+date-format: iso
+format:
+  html: 
+    fontsize: normal
+    page-layout: full
 ---
 
-This is a Quarto website.
+# テーマ
 
-To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
+Tidyverse を活用したデータ前処理の実践
+
+# 概要
+
+Tidyverseの概要と解析用のデータ整形の方針ついて簡単にお話しした後で、2つのデータをRで整形するデモを行います。
+
+1. 厚労省 人口動態統計「死因別にみた性・年次別死亡数」 （e-Stat公開データ）
+2. 多施設レジストリ研究をイメージした模擬データ（n = 400）
+
+# スライド
+
+（準備中）
+
+# 準備
+
+## R packages
+
+mJOHNSNOW 「Rでデータ解析講座」の基本セットに含まれないパッケージとして、以下のものを使用します。
+
+- `tidylog`
+- `openxlsx`
+- gtsummary の機能に付随して、`broom.helpers` など
+
+上記を個別または下記を参考にインストールしておいてください。
+
+```{r}
+#| eval: false
+
+# 並列ダウンロード、インストール済パッケージのスキップなど可能な pak を使用
+if (!("pak" %in% installed.packages()[,"Package"])) {
+  install.packages("pak")
+}
+
+# mJOHNSNOW Rでデータ解析講座 の基本セットに含まれないパッケージ
+pak::pkg_install("tidylog")
+
+# gtsummary は追加的機能（Suggests）も含めてインストールし直す
+# この中に openxlsx, broom.helpers など今回必要になるものも含まれる
+pak::pkg_install("gtsummary", dependencies = TRUE)
+```
+
+## データ
+
+### 前半（初級編）
+
+厚生労働省 人口動態統計 より、2023年の死因別死亡数のデータを使用します。
+
+[https://www.e-stat.go.jp/stat-search/files?tclass=000001041646&cycle=7&year=20230](https://www.e-stat.go.jp/stat-search/files?tclass=000001041646&cycle=7&year=20230)
+
+より、「[5-13 死因（死因簡単分類）別にみた性・年次別死亡数及び死亡率（人口10万対）/ 2023年](https://www.e-stat.go.jp/stat-search/file-download?statInfId=000040206118&fileKind=1)」（公開日 2024-09-17）の CSVファイル（mc130000.csv）を Working Directory にダウンロードして下さい。
+
+### 後半（中級編）
+
+間質性肺炎の多施設レジストリ研究をイメージした模擬データを使用します。\
+[**こちら**](../ip_registry_data.xlsx) から「ip_registry_data.xlsx」を Working Directory にダウンロードして下さい。
+
+- n = 400
+- 観察期間は10年
+- 登録時に加えて、1, 3, 5年後の経過データ
+
+一旦作成した模擬データに、あえてノイズを加えたものを配布データとしています。
+
+## コード
+
+HTML document 形式のレポートを作成する Quarto 形式（.qmd）でコードを準備しました。時間が足りなくなりそうなので説明を多めに記載してあります。
+
+こちらも上記データと同じ Working Directory にダウンロードして下さい。
+
+- [**初級編**（人口動態統計データの処理）](../Data_cleaning_CauseOfDeath_html.qmd)
+    - Render済の [HTML document](../docs/Data_cleaning_CauseOfDeath_html.html)
+    - ほぼ同じソースから出力した [PDF file](../docs/Data_cleaning_CauseOfDeath_full.pdf)
+- [**中級編**（多施設レジストリ研究の模擬データの処理）](../Data_cleaning_IPRegistry_html.qmd)
+    - Render済の [HTML document](../docs/Data_cleaning_IPRegistry_html.html)
+    - ほぼ同じソースから出力した [PDF file](../docs/Data_cleaning_IPRegistry_full.pdf)
+
+## 資料
+
+Posit社の [Cheat Sheet 集](https://posit.co/resources/cheatsheets/)
+
+- [stringr](https://rstudio.github.io/cheatsheets/html/strings.html)
+- [tidyr](https://rstudio.github.io/cheatsheets/html/tidyr.html)
+- [dplyr](https://rstudio.github.io/cheatsheets/html/data-transformation.html)
+
+-----
+
+# Appendix
+
+## 模擬データの作成コード
+
+Github repository の script ディレクトリにあります。興味ある方は上の Github リンクから御覧ください。
+
+意図的なノイズを加えた Excel ファイルにする前の [full data CSV](../ip_10yrs_data.csv)
+
+## Typst-PDF と HTML document の共存
+
+Quarto で同じソースから HTML document と Typst による PDF の両方を作成する実験をしました。上記配布コードはそこから Typst の設定を除いて HTML document 専用にしたものです。
+
+Typst は最近では Quarto に同梱されており（Quarto 自体が RStudio に同梱されています）、TeX環境を構築せずとも高品質の PDF レポートが作成できるようになりました。
+
+Typst の文法・設定はあまり理解できておらず見様見真似です。\
+Windows と Ubuntu linux（rocker/rstudio ベースの Docker 環境）では確認しましたが macOS の環境がないためフォント不足などでエラーとなる可能性は大いにあります。また改ページは Windows 上で出力した Typst-PDF にあわせています。
+
+- [初級編（人口動態統計データの処理）](../Data_cleaning_CauseOfDeath_full.qmd)
+- [中級編（多施設レジストリ研究の模擬データの処理）](../Data_cleaning_IPRegistry_full.qmd)

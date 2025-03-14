@@ -1,5 +1,7 @@
 project:
   type: website
+  render: 
+    - index.qmd
 
 website:
   title: "mJ peerR vol.4"
@@ -7,13 +9,13 @@ website:
     left:
       - href: index.qmd
         text: Home
-      - about.qmd
+      - href: https://github.com/mokztk/mJ_Rpeer_2025Mar
+        text: View Codes
+        icon: github
 
 format:
   html:
     theme: cosmo
     css: styles.css
     toc: true
-
-
 
