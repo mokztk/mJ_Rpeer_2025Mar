@@ -1,0 +1,51 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "mJOHNSNOW R解析Peer勉強会 vol.4",
+    "section": "",
+    "text": "Tidyverse を活用したデータ前処理の実践"
+  },
+  {
+    "objectID": "index.html#r-packages",
+    "href": "index.html#r-packages",
+    "title": "mJOHNSNOW R解析Peer勉強会 vol.4",
+    "section": "R packages",
+    "text": "R packages\nmJOHNSNOW 「Rでデータ解析講座」の基本セットに含まれないパッケージとして、以下のものを使用します。\n\ntidylog\nopenxlsx\ngtsummary の機能に付随して、broom.helpers など\n\n上記を個別または下記を参考にインストールしておいてください。\n\n# 並列ダウンロード、インストール済パッケージのスキップなど可能な pak を使用\nif (!(\"pak\" %in% installed.packages()[,\"Package\"])) {\n  install.packages(\"pak\")\n}\n\n# mJOHNSNOW Rでデータ解析講座 の基本セットに含まれないパッケージ\npak::pkg_install(\"tidylog\")\n\n# gtsummary は追加的機能（Suggests）も含めてインストールし直す\n# この中に openxlsx, broom.helpers など今回必要になるものも含まれる\npak::pkg_install(\"gtsummary\", dependencies = TRUE)"
+  },
+  {
+    "objectID": "index.html#データ",
+    "href": "index.html#データ",
+    "title": "mJOHNSNOW R解析Peer勉強会 vol.4",
+    "section": "データ",
+    "text": "データ\n\n前半（初級編）\n厚生労働省 人口動態統計 より、2023年の死因別死亡数のデータを使用します。\nhttps://www.e-stat.go.jp/stat-search/files?tclass=000001041646&cycle=7&year=20230\nより、「5-13 死因（死因簡単分類）別にみた性・年次別死亡数及び死亡率（人口10万対）/ 2023年」（公開日 2024-09-17）の CSVファイル（mc130000.csv）を Working Directory にダウンロードして下さい。\n\n\n後半（中級編）\n間質性肺炎の多施設レジストリ研究をイメージした模擬データを使用します。\nこちら から「ip_registry_data.xlsx」を Working Directory にダウンロードして下さい。\n\nn = 400\n観察期間は10年\n登録時に加えて、1, 3, 5年後の経過データ\n\n一旦作成した模擬データに、あえてノイズを加えたものを配布データとしています。"
+  },
+  {
+    "objectID": "index.html#コード",
+    "href": "index.html#コード",
+    "title": "mJOHNSNOW R解析Peer勉強会 vol.4",
+    "section": "コード",
+    "text": "コード\nHTML document 形式のレポートを作成する Quarto 形式（.qmd）でコードを準備しました。時間が足りなくなりそうなので説明を多めに記載してあります。\nこちらも上記データと同じ Working Directory にダウンロードして下さい。\n\n初級編（人口動態統計データの処理）\n\nRender済の HTML document\nほぼ同じソースから出力した PDF file\n\n中級編（多施設レジストリ研究の模擬データの処理）\n\nRender済の HTML document\nほぼ同じソースから出力した PDF file"
+  },
+  {
+    "objectID": "index.html#資料",
+    "href": "index.html#資料",
+    "title": "mJOHNSNOW R解析Peer勉強会 vol.4",
+    "section": "資料",
+    "text": "資料\nPosit社の Cheat Sheet 集\n\nstringr\ntidyr\ndplyr"
+  },
+  {
+    "objectID": "index.html#模擬データの作成コード",
+    "href": "index.html#模擬データの作成コード",
+    "title": "mJOHNSNOW R解析Peer勉強会 vol.4",
+    "section": "模擬データの作成コード",
+    "text": "模擬データの作成コード\nGithub repository の script ディレクトリにあります。興味ある方は上の Github リンクから御覧ください。\n意図的なノイズを加えた Excel ファイルにする前の full data CSV"
+  },
+  {
+    "objectID": "index.html#typst-pdf-と-html-document-の共存",
+    "href": "index.html#typst-pdf-と-html-document-の共存",
+    "title": "mJOHNSNOW R解析Peer勉強会 vol.4",
+    "section": "Typst-PDF と HTML document の共存",
+    "text": "Typst-PDF と HTML document の共存\nQuarto で同じソースから HTML document と Typst による PDF の両方を作成する実験をしました。上記配布コードはそこから Typst の設定を除いて HTML document 専用にしたものです。\nTypst は最近では Quarto に同梱されており（Quarto 自体が RStudio に同梱されています）、TeX環境を構築せずとも高品質の PDF レポートが作成できるようになりました。\nTypst の文法・設定はあまり理解できておらず見様見真似です。\nWindows と Ubuntu linux（rocker/rstudio ベースの Docker 環境）では確認しましたが macOS の環境がないためフォント不足などでエラーとなる可能性は大いにあります。また改ページは Windows 上で出力した Typst-PDF にあわせています。\n\n初級編（人口動態統計データの処理）\n中級編（多施設レジストリ研究の模擬データの処理）"
+  }
+]
