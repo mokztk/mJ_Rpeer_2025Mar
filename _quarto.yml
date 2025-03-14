@@ -8,10 +8,14 @@ website:
   title: "mJ peerR vol.4"
   navbar:
     left:
-      - href: index.qmd
-        text: Home
-      - href: https://github.com/mokztk/mJ_Rpeer_2025Mar
-        text: View Codes
+      - text: Home
+        href: index.qmd
+      - text: 初級編
+        href: ../docs/Data_cleaning_CauseOfDeath_html.html
+      - text: 中級編
+        href: ../docs/Data_cleaning_IPRegistry_html.html
+      - text: View Codes
+        href: https://github.com/mokztk/mJ_Rpeer_2025Mar
         icon: github
 
 format:
