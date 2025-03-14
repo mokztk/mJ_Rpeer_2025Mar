@@ -3,17 +3,20 @@ project:
   output-dir: site
   render: 
     - index.qmd
+    - Data_cleaning_CauseOfDeath_html.qmd
+    - Data_cleaning_IPRegistry_html.qmd
 
 website:
   title: "mJ peerR vol.4"
   navbar:
+    background: dark
     left:
       - text: Home
         href: index.qmd
       - text: 初級編
-        href: ../docs/Data_cleaning_CauseOfDeath_html.html
+        href: Data_cleaning_CauseOfDeath_html.qmd
       - text: 中級編
-        href: ../docs/Data_cleaning_IPRegistry_html.html
+        href: Data_cleaning_IPRegistry_html.qmd
       - text: View Codes
         href: https://github.com/mokztk/mJ_Rpeer_2025Mar
         icon: github
