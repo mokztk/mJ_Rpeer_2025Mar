@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.5.57">
+<meta name="generator" content="quarto-1.6.42">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -71,10 +71,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-2fa0555fe88427c29efa1b60aaf9e62d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-ca60f0d3abdf029796db6d8c0b99f61b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -173,6 +173,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </ul></li>
   <li><a href="#appendix" id="toc-appendix" class="nav-link" data-scroll-target="#appendix">Appendix</a>
   <ul class="collapse">
+  <li><a href="#パイプ演算子の挙動" id="toc-パイプ演算子の挙動" class="nav-link" data-scroll-target="#パイプ演算子の挙動">パイプ演算子の挙動</a></li>
   <li><a href="#模擬データの作成コード" id="toc-模擬データの作成コード" class="nav-link" data-scroll-target="#模擬データの作成コード">模擬データの作成コード</a></li>
   <li><a href="#typst-pdf-と-html-document-の共存" id="toc-typst-pdf-と-html-document-の共存" class="nav-link" data-scroll-target="#typst-pdf-と-html-document-の共存">Typst-PDF と HTML document の共存</a></li>
   </ul></li>
@@ -305,6 +306,50 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="appendix" class="level1">
 <h1>Appendix</h1>
+<section id="パイプ演算子の挙動" class="level2">
+<h2 class="anchored" data-anchor-id="パイプ演算子の挙動">パイプ演算子の挙動</h2>
+<p>パイプ演算子は magritter pipe (<code>%&gt;%</code>) も base pipe (<code>|&gt;</code>) も <strong>パイプの右側の関数の1つ目のパラメーター（引数）に左側を挿入し、元々あった引数を1つずつ後ろにずらす</strong> のが基本動作となります。</p>
+<p>R の関数に渡される引数は、</p>
+<ol type="1">
+<li>引数名を指定した場合は、指定した引数に値が割り当てられる</li>
+<li>引数名を書かないものは、関数定義の順に当てはめられる</li>
+</ol>
+<p>の順に決まりますが、パイプ演算子は原則として「引数名を書かないもの」の一番最初に挿入されます。</p>
+<p>この挙動により、パイプを受け取る側の関数で指定していた引数が想定したものとズレてしまいエラーになることがあります。できるだけ、パイプを使用した記載のときは<span style="text-decoration:underline;">引数名を省略せずに記載</span>するようにした方が安全です。</p>
+<p>（下記のサンプルコードは、base pipe の方が分かりやすいのでここだけ base pipe を使います）</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># match.call() は関数がどのように呼び出されたかを表示する</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>f <span class="ot">&lt;-</span> <span class="cf">function</span>(x, y, z, ...) <span class="fu">match.call</span>()</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>g <span class="ot">&lt;-</span> <span class="cf">function</span>(x, y, z, ...) <span class="fu">match.call</span>()</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>data <span class="ot">&lt;-</span> <span class="fu">data.frame</span>()</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># パラメーター（引数）名を書かないと関数定義の順に当てはめられる</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="fu">f</span>(<span class="st">"p1"</span>, <span class="st">"p2"</span>, <span class="st">"p3"</span>)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="do">## f(x = "p1", y = "p2", z = "p3")</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="co"># 引数名を指定すると、記載順にかかわらず指定した引数に割り当てられる</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="fu">f</span>(<span class="at">z =</span> <span class="st">"p1"</span>, <span class="at">y =</span> <span class="st">"p2"</span>, <span class="st">"p3"</span>)</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="do">## f(x = "p3", y = "p2", z = "p1")</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="co"># 引数名を指定せずパイプで受け渡す場合</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="co"># &gt; ひとつめの引数に挿入され、元々あったものはひとつずつずれる</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>data <span class="sc">|&gt;</span> <span class="fu">f</span>(<span class="st">"param"</span>, <span class="st">"this must be 'y'"</span>)</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="do">## f(x = data, y = "param", z = "this must be 'y'")</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>data <span class="sc">|&gt;</span> <span class="fu">f</span>(<span class="st">"p1"</span>) <span class="sc">|&gt;</span> <span class="fu">g</span>(<span class="st">"p2"</span>)</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="do">## g(x = f(data, "p1"), y = "p2")</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="co"># ズレないためには引数名を指定する</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="co"># &gt; パイプの左側は指定されていない一番最初の引数に挿入される</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>data <span class="sc">|&gt;</span> <span class="fu">f</span>(<span class="at">x =</span> <span class="st">"this must be 'x'"</span>)</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="do">## f(x = "this must be 'x'", y = data)</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="co"># パイプの左側を反映する引数を指定する場合は placeholder を使う</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="co"># &gt; . (magritter pipe) or _ (base pipe)</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>data <span class="sc">|&gt;</span> <span class="fu">f</span>(<span class="st">"param"</span>, <span class="at">z =</span> _)</span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a><span class="do">## f(x = "param", z = data)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
 <section id="模擬データの作成コード" class="level2">
 <h2 class="anchored" data-anchor-id="模擬データの作成コード">模擬データの作成コード</h2>
 <p>Github repository の script ディレクトリにあります。興味ある方は上の Github リンクから御覧ください。</p>
@@ -408,8 +453,6 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
   });
   clipboard.on('success', onCopySuccess);
   if (window.document.getElementById('quarto-embedded-source-code-modal')) {
-    // For code content inside modals, clipBoardJS needs to be initialized with a container option
-    // TODO: Check when it could be a function (https://github.com/zenorocha/clipboard.js/issues/860)
     const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
       text: getTextToCopy,
       container: window.document.getElementById('quarto-embedded-source-code-modal')
@@ -520,7 +563,6 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       if (window.Quarto?.typesetMath) {
         window.Quarto.typesetMath(note);
       }
-      // TODO in 1.5, we should make sure this works without a callout special case
       if (note.classList.contains("callout")) {
         return note.outerHTML;
       } else {
