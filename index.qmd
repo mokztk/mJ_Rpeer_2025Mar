@@ -121,8 +121,14 @@ R の関数に渡される引数は、
 
 # match.call() は関数がどのように呼び出されたかを表示する
 f <- function(x, y, z, ...) match.call()
-g <- function(x, y, z, ...) match.call()
 
+# g() は y が数値でないとエラーになる関数
+g <- function(x, y = 1, z, ...) {
+  if (!is.numeric(y)) message("ERROR: parameter 'y' must be numeric.")
+  match.call()
+}
+
+# 説明用の空データ
 data <- data.frame()
 
 # パラメーター（引数）名を書かないと関数定義の順に当てはめられる
@@ -133,8 +139,8 @@ f(z = "p1", y = "p2", "p3")
 
 # 引数名を指定せずパイプで受け渡す場合
 # > ひとつめの引数に挿入され、元々あったものはひとつずつずれる
-data |> f("param", "this must be 'y'")
-data |> f("p1") |> g("p2")
+data |> f("param", "this is 'y'")
+data |> f("p1") |> g("p2", 123)
 
 # ズレないためには引数名を指定する
 # > パイプの左側は指定されていない一番最初の引数に挿入される
