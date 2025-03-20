@@ -25,7 +25,7 @@ Tidyverseの概要と解析用のデータ整形の方針ついて簡単にお�
 
 # スライド
 
-（準備中）
+[PDF file (about 2 MB)](../docs/Seminar_Rpeer_vol4.pdf)
 
 # 準備
 
